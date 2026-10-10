@@ -42,7 +42,7 @@ docs = root / "docs"; docs.mkdir(exist_ok=True)
 <link rel="icon" href="{uri("icon_light.png")}">
 {fonts}
 <style>html,body{{margin:0}}[hidden]{{display:none!important}}img{{max-width:100%}}:root{{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}}</style>
-<script src="config.js"></script>
+<script>document.write('<script src="config.js?t=' + Date.now() + '"><\\/script>');</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 {read(root / "standalone" / "shim.js")}
