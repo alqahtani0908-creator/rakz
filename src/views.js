@@ -210,18 +210,18 @@ CASE_TABS.overview = (c, tasks) => {
   const gen = S.gen?.kind === "brief" && S.gen.caseId === c.id;
   return `<div class="cols">
     <div class="stack">
-      <div class="card"><div class="card-h"><h3>${icon("spark", "")} قراءة المساعد لمجريات القضية</h3>
-        <div class="row">${c.ai?.briefAt ? `<span class="sub">آخر تحديث ${ago(c.ai.briefAt)}</span>` : ""}${gen ? `<button class="btn sm" data-act="stopGen">إيقاف</button>` : `<button class="btn sm gold" data-act="caseBrief" data-id="${c.id}">${icon("spark")}${c.ai?.brief ? "تحديث القراءة" : "حلّل القضية"}</button>`}</div></div>
+      ${S.caps.sample || c.ai?.brief ? `<div class="card"><div class="card-h"><h3>${icon("spark", "")} قراءة المساعد لمجريات القضية</h3>
+        <div class="row">${c.ai?.briefAt ? `<span class="sub">آخر تحديث ${ago(c.ai.briefAt)}</span>` : ""}${gen ? `<button class="btn sm" data-act="stopGen">إيقاف</button>` : `<button class="btn sm gold" data-act="caseBrief" data-id="${c.id}" ${S.caps.sample ? "" : "hidden"}>${icon("spark")}${c.ai?.brief ? "تحديث القراءة" : "حلّل القضية"}</button>`}</div></div>
         ${gen ? `<div class="prose" id="gen-out">${S.gen.text ? esc(S.gen.text) : '<span class="thinking">يقرأ المساعد المرفقات وسجل الإجراءات…</span>'}</div>`
           : c.ai?.brief ? `<div class="prose">${esc(c.ai.brief)}</div><p class="small muted" style="margin:10px 0 0">مخرجات آلية للمساعدة؛ يراجعها المحامي المسؤول قبل الاعتماد.</p>`
           : emptyBox("spark", "لم تُحلَّل القضية بعد", "ارفع صحيفة الدعوى والمذكرات والأحكام، ثم اطلب من المساعد قراءة المجريات والتحقق من جهة الاختصاص.")}
-      </div>
+      </div>` : ""}
       <div class="card"><div class="card-h"><h3>الوقائع</h3></div><div class="prose">${esc(c.description || "لم تُكتب وقائع بعد.")}</div></div>
     </div>
     <div class="stack">
       <div class="card"><div class="card-h"><h3>جهة الاختصاص</h3></div>
         ${j ? `<div class="juris ${j.matchesCase === true ? "ok" : j.matchesCase === false ? "bad" : "unk"}"><div><b>${j.matchesCase === true ? "الجهة المسجلة تبدو مختصة" : j.matchesCase === false ? "يُحتمل عدم الاختصاص" : "يحتاج تحققًا"}</b><div class="small">الجهة المقترحة: ${esc(j.expectedCourt || "—")}</div><div class="small">${esc(j.note || j.basis || "")}</div></div></div>`
-          : `<p class="muted small" style="margin:0">يتحقق المساعد من الاختصاص النوعي والمكاني عند تحليل المرفقات أو القضية.</p>`}
+          : `<p class="muted small" style="margin:0">${S.caps.sample ? "يتحقق المساعد من الاختصاص النوعي والمكاني عند تحليل المرفقات أو القضية." : "سجّل المحكمة والدائرة والمدينة في بيانات القضية، وراجع الاختصاص النوعي والمكاني قبل القيد."}</p>`}
       </div>
       <div class="card"><div class="card-h"><h3>القادم في هذه القضية</h3><button class="btn sm" data-act="newTask" data-case="${c.id}">${icon("plus")}إضافة</button></div>
         ${up.length ? `<div class="list">${up.map((t) => taskRow(t, { noCase: true })).join("")}</div>` : `<p class="muted small" style="margin:0">لا توجد مواعيد أو مهام مفتوحة.</p>`}
@@ -243,7 +243,7 @@ CASE_TABS.log = (c) => `<div class="cols"><div class="card"><div class="card-h">
 F.addLog = async (d, f) => { const kinds = { session: "حضور جلسة", memo: "تقديم مذكرة", note: "ملاحظة", call: "تواصل مع العميل", status: "قرار / حكم" }; await logCase(d.caseId, d.kind === "status" ? "status" : "note", `${kinds[d.kind]}: ${d.text.trim()}`, { at: new Date(d.date + "T12:00:00").toISOString() }); f.reset(); toast("أُضيف الإجراء إلى السجل"); };
 
 CASE_TABS.files = (c) => `
-  <div class="drop" data-act="uploadPick" data-id="${c.id}" id="dropzone">${icon("upload")}<div><b>اسحب الملفات هنا أو اضغط للاختيار</b></div><div class="small">PDF، صور، Word أو نص · تُحفظ في ملف القضية ويقرؤها المساعد ليستخرج المواعيد والمتطلبات ويتحقق من الاختصاص</div></div>
+  <div class="drop" data-act="uploadPick" data-id="${c.id}" id="dropzone">${icon("upload")}<div><b>اسحب الملفات هنا أو اضغط للاختيار</b></div><div class="small">PDF، صور، Word أو نص · تُحفظ في ملف القضية${S.caps.sample ? " ويقرؤها المساعد ليستخرج المواعيد والمتطلبات ويتحقق من الاختصاص" : " ويُسجَّل رفعها في سجل الإجراءات"}</div></div>
   ${S.caps.assets === null && S.booted ? `<div class="banner warn"><div class="grow">رفع الملفات يحتاج صلاحية «محرر» على المنصة. اطلب من المالك ترقية صلاحيتك.</div></div>` : ""}
   ${(S.uploads || []).filter((u) => u.caseId === c.id).map((u) => `<div class="file"><div class="file-h"><span class="ic">${esc(ext(u.name))}</span><div class="grow"><b>${esc(u.name)}</b><div class="thinking small">${esc(u.stage)}</div></div></div></div>`).join("")}
   ${S.caseFiles.length ? S.caseFiles.map((f) => fileCard(c, f)).join("") : (S.uploads || []).some((u) => u.caseId === c.id) ? "" : `<div class="card">${emptyBox("docs", "لا توجد مرفقات بعد", "ابدأ بصحيفة الدعوى أو آخر محضر جلسة.")}</div>`}`;
@@ -254,7 +254,7 @@ function fileCard(c, f) {
     <div class="grow" style="min-width:160px"><b style="overflow-wrap:anywhere">${esc(f.name)}</b><div class="small muted">${esc(f.category || "")} · ${fmtWhen(f.at)} · ${esc(lawyerName(f.by) === "غير مسند" ? "" : lawyerName(f.by))}</div>
       ${a ? `<div class="small" style="margin-top:2px">${esc(a.docType || "")}${a.jurisdiction?.matchesCase === false ? ' · <span class="pill bad">تنبيه اختصاص</span>' : ""}${(a.events || []).length ? ` · <span class="pill gold">${a.events.length} موعد مستخرج</span>` : ""}</div>` : ""}</div>
     <div class="row">${f.assetId ? `<button class="btn sm ghost" data-act="viewFile" data-id="${f.id}">${icon("eye")}عرض</button>` : ""}
-      ${busy ? `<span class="thinking small">${esc(busy)}</span>` : `<button class="btn sm ${a ? "" : "gold"}" data-act="analyzeFile" data-id="${f.id}">${icon("spark")}${a ? "إعادة التحليل" : "تحليل"}</button>`}
+      ${busy ? `<span class="thinking small">${esc(busy)}</span>` : S.caps.sample ? `<button class="btn sm ${a ? "" : "gold"}" data-act="analyzeFile" data-id="${f.id}">${icon("spark")}${a ? "إعادة التحليل" : "تحليل"}</button>` : ""}
       ${a ? `<button class="btn sm ghost" data-act="toggleFile" data-id="${f.id}">${open ? "إخفاء" : "النتائج"}</button>` : ""}
       <button class="btn sm ghost danger" data-act="deleteFile" data-id="${f.id}" aria-label="حذف">${icon("trash")}</button></div></div>
     ${a && open ? analysisBox(c, f, a) : ""}</div>`;

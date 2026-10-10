@@ -195,7 +195,8 @@
   };
   sample.limits = async () => ({ maxPromptBytes: 900000, images: { maxCount: 8, maxInputBytes: 20e6, mediaTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"] }, tools: { maxCount: 0 } });
 
-  const caps = { db, user, sample, assets, downloads };
+  // aiEnabled: false in config.js runs the platform without the paid AI connection.
+  const caps = { db, user, sample: CFG.aiEnabled === false ? null : sample, assets, downloads };
   window.claude = { use: (name) => (sb ? ready.then(() => caps[name] || null) : Promise.resolve(null)) };
 })();
 
@@ -1144,18 +1145,18 @@ CASE_TABS.overview = (c, tasks) => {
   const gen = S.gen?.kind === "brief" && S.gen.caseId === c.id;
   return `<div class="cols">
     <div class="stack">
-      <div class="card"><div class="card-h"><h3>${icon("spark", "")} قراءة المساعد لمجريات القضية</h3>
-        <div class="row">${c.ai?.briefAt ? `<span class="sub">آخر تحديث ${ago(c.ai.briefAt)}</span>` : ""}${gen ? `<button class="btn sm" data-act="stopGen">إيقاف</button>` : `<button class="btn sm gold" data-act="caseBrief" data-id="${c.id}">${icon("spark")}${c.ai?.brief ? "تحديث القراءة" : "حلّل القضية"}</button>`}</div></div>
+      ${S.caps.sample || c.ai?.brief ? `<div class="card"><div class="card-h"><h3>${icon("spark", "")} قراءة المساعد لمجريات القضية</h3>
+        <div class="row">${c.ai?.briefAt ? `<span class="sub">آخر تحديث ${ago(c.ai.briefAt)}</span>` : ""}${gen ? `<button class="btn sm" data-act="stopGen">إيقاف</button>` : `<button class="btn sm gold" data-act="caseBrief" data-id="${c.id}" ${S.caps.sample ? "" : "hidden"}>${icon("spark")}${c.ai?.brief ? "تحديث القراءة" : "حلّل القضية"}</button>`}</div></div>
         ${gen ? `<div class="prose" id="gen-out">${S.gen.text ? esc(S.gen.text) : '<span class="thinking">يقرأ المساعد المرفقات وسجل الإجراءات…</span>'}</div>`
           : c.ai?.brief ? `<div class="prose">${esc(c.ai.brief)}</div><p class="small muted" style="margin:10px 0 0">مخرجات آلية للمساعدة؛ يراجعها المحامي المسؤول قبل الاعتماد.</p>`
           : emptyBox("spark", "لم تُحلَّل القضية بعد", "ارفع صحيفة الدعوى والمذكرات والأحكام، ثم اطلب من المساعد قراءة المجريات والتحقق من جهة الاختصاص.")}
-      </div>
+      </div>` : ""}
       <div class="card"><div class="card-h"><h3>الوقائع</h3></div><div class="prose">${esc(c.description || "لم تُكتب وقائع بعد.")}</div></div>
     </div>
     <div class="stack">
       <div class="card"><div class="card-h"><h3>جهة الاختصاص</h3></div>
         ${j ? `<div class="juris ${j.matchesCase === true ? "ok" : j.matchesCase === false ? "bad" : "unk"}"><div><b>${j.matchesCase === true ? "الجهة المسجلة تبدو مختصة" : j.matchesCase === false ? "يُحتمل عدم الاختصاص" : "يحتاج تحققًا"}</b><div class="small">الجهة المقترحة: ${esc(j.expectedCourt || "—")}</div><div class="small">${esc(j.note || j.basis || "")}</div></div></div>`
-          : `<p class="muted small" style="margin:0">يتحقق المساعد من الاختصاص النوعي والمكاني عند تحليل المرفقات أو القضية.</p>`}
+          : `<p class="muted small" style="margin:0">${S.caps.sample ? "يتحقق المساعد من الاختصاص النوعي والمكاني عند تحليل المرفقات أو القضية." : "سجّل المحكمة والدائرة والمدينة في بيانات القضية، وراجع الاختصاص النوعي والمكاني قبل القيد."}</p>`}
       </div>
       <div class="card"><div class="card-h"><h3>القادم في هذه القضية</h3><button class="btn sm" data-act="newTask" data-case="${c.id}">${icon("plus")}إضافة</button></div>
         ${up.length ? `<div class="list">${up.map((t) => taskRow(t, { noCase: true })).join("")}</div>` : `<p class="muted small" style="margin:0">لا توجد مواعيد أو مهام مفتوحة.</p>`}
@@ -1177,7 +1178,7 @@ CASE_TABS.log = (c) => `<div class="cols"><div class="card"><div class="card-h">
 F.addLog = async (d, f) => { const kinds = { session: "حضور جلسة", memo: "تقديم مذكرة", note: "ملاحظة", call: "تواصل مع العميل", status: "قرار / حكم" }; await logCase(d.caseId, d.kind === "status" ? "status" : "note", `${kinds[d.kind]}: ${d.text.trim()}`, { at: new Date(d.date + "T12:00:00").toISOString() }); f.reset(); toast("أُضيف الإجراء إلى السجل"); };
 
 CASE_TABS.files = (c) => `
-  <div class="drop" data-act="uploadPick" data-id="${c.id}" id="dropzone">${icon("upload")}<div><b>اسحب الملفات هنا أو اضغط للاختيار</b></div><div class="small">PDF، صور، Word أو نص · تُحفظ في ملف القضية ويقرؤها المساعد ليستخرج المواعيد والمتطلبات ويتحقق من الاختصاص</div></div>
+  <div class="drop" data-act="uploadPick" data-id="${c.id}" id="dropzone">${icon("upload")}<div><b>اسحب الملفات هنا أو اضغط للاختيار</b></div><div class="small">PDF، صور، Word أو نص · تُحفظ في ملف القضية${S.caps.sample ? " ويقرؤها المساعد ليستخرج المواعيد والمتطلبات ويتحقق من الاختصاص" : " ويُسجَّل رفعها في سجل الإجراءات"}</div></div>
   ${S.caps.assets === null && S.booted ? `<div class="banner warn"><div class="grow">رفع الملفات يحتاج صلاحية «محرر» على المنصة. اطلب من المالك ترقية صلاحيتك.</div></div>` : ""}
   ${(S.uploads || []).filter((u) => u.caseId === c.id).map((u) => `<div class="file"><div class="file-h"><span class="ic">${esc(ext(u.name))}</span><div class="grow"><b>${esc(u.name)}</b><div class="thinking small">${esc(u.stage)}</div></div></div></div>`).join("")}
   ${S.caseFiles.length ? S.caseFiles.map((f) => fileCard(c, f)).join("") : (S.uploads || []).some((u) => u.caseId === c.id) ? "" : `<div class="card">${emptyBox("docs", "لا توجد مرفقات بعد", "ابدأ بصحيفة الدعوى أو آخر محضر جلسة.")}</div>`}`;
@@ -1188,7 +1189,7 @@ function fileCard(c, f) {
     <div class="grow" style="min-width:160px"><b style="overflow-wrap:anywhere">${esc(f.name)}</b><div class="small muted">${esc(f.category || "")} · ${fmtWhen(f.at)} · ${esc(lawyerName(f.by) === "غير مسند" ? "" : lawyerName(f.by))}</div>
       ${a ? `<div class="small" style="margin-top:2px">${esc(a.docType || "")}${a.jurisdiction?.matchesCase === false ? ' · <span class="pill bad">تنبيه اختصاص</span>' : ""}${(a.events || []).length ? ` · <span class="pill gold">${a.events.length} موعد مستخرج</span>` : ""}</div>` : ""}</div>
     <div class="row">${f.assetId ? `<button class="btn sm ghost" data-act="viewFile" data-id="${f.id}">${icon("eye")}عرض</button>` : ""}
-      ${busy ? `<span class="thinking small">${esc(busy)}</span>` : `<button class="btn sm ${a ? "" : "gold"}" data-act="analyzeFile" data-id="${f.id}">${icon("spark")}${a ? "إعادة التحليل" : "تحليل"}</button>`}
+      ${busy ? `<span class="thinking small">${esc(busy)}</span>` : S.caps.sample ? `<button class="btn sm ${a ? "" : "gold"}" data-act="analyzeFile" data-id="${f.id}">${icon("spark")}${a ? "إعادة التحليل" : "تحليل"}</button>` : ""}
       ${a ? `<button class="btn sm ghost" data-act="toggleFile" data-id="${f.id}">${open ? "إخفاء" : "النتائج"}</button>` : ""}
       <button class="btn sm ghost danger" data-act="deleteFile" data-id="${f.id}" aria-label="حذف">${icon("trash")}</button></div></div>
     ${a && open ? analysisBox(c, f, a) : ""}</div>`;
@@ -1965,6 +1966,140 @@ const OBJ_GUIDE = {
   review: `التماس إعادة النظر في الأحكام النهائية (نظام المرافعات الشرعية، مع التحقق من المادة): يُقبل في حالات محصورة، منها: إذا بُني الحكم على أوراق ظهر بعد الحكم تزويرها أو على شهادة قُضي بأنها مزوّرة؛ إذا حصل الملتمس بعد الحكم على أوراق قاطعة في الدعوى لم يكن ممكنًا تقديمها قبله؛ إذا وقع من الخصم غش كان من شأنه التأثير في الحكم؛ إذا قضى الحكم بشيء لم يطلبه الخصوم أو بأكثر مما طلبوه؛ إذا كان منطوق الحكم يناقض بعضه بعضًا؛ إذا كان الحكم غيابيًا؛ إذا صدر الحكم على من لم يكن ممثلًا تمثيلًا صحيحًا. المهلة ثلاثون يومًا تبدأ بحسب الحالة (من ظهور التزوير أو الورقة أو الغش، أو من العلم بالحكم). حدّد الحالة المنطبقة بوضوح وتاريخ العلم بها، ثم الطلبات.`,
 };
 
+/* ---------- Pleading templates (used when the assistant is off) ---------- */
+const B = "[........]";
+function pleadingTemplate(c, type, notes) {
+  const T = PLEADING_TYPES[type]; const j = c.judgment || {}; const law = byId(S.data.lawyers, c.lawyerId);
+  const role = c.clientRole || "الموكل";
+  const court = [c.court, c.circuit, c.city].filter(Boolean).join(" — ") || B;
+  const head = `> بسم الله الرحمن الرحيم
+# ${T.t}
+
+| البيان | التفاصيل |
+| ${role} | ${clientName(c.clientId)} |
+| الخصم | ${c.opponent || B} |
+| المحكمة / الدائرة | ${court} |
+| رقم القضية | ${c.najiz || B} |${["appeal", "cassation", "review"].includes(type) ? `
+| الحكم محل الاعتراض | رقم ${j.no || B} وتاريخ ${j.date ? fmtDate(j.date) : B} |
+| تاريخ التسلّم / العلم | ${j.receivedAt ? fmtDate(j.receivedAt) : B} |` : ""}
+`;
+  const addr = type === "appeal" ? "> أصحاب الفضيلة رئيس وأعضاء محكمة الاستئناف وفقهم الله"
+    : type === "cassation" ? "> أصحاب الفضيلة رئيس وأعضاء المحكمة العليا وفقهم الله"
+    : `> فضيلة رئيس ${c.circuit || "الدائرة"}${c.court ? " في " + c.court : ""}${c.city ? " بمدينة " + c.city : ""} سلمه الله`;
+  const facts = (c.description || "").trim() || B;
+  const sections = {
+    claim: `## أولًا: الوقائع
+${facts}
+
+## ثانيًا: الأسانيد النظامية
+1. ${B}
+2. ${B}
+
+## ثالثًا: الطلبات
+بناءً على ما تقدم نطلب من فضيلتكم:
+1. ${B}
+2. إلزام المدعى عليه بالمصروفات وأتعاب المحاماة.`,
+    reply: `## أولًا: ملخص دعوى الخصم
+${B}
+
+## ثانيًا: الدفوع الشكلية
+1. ${B}
+
+## ثالثًا: الرد على الدفوع الموضوعية
+1. ما ذكره الخصم من ${B}: والرد عليه ${B}.
+2. ما ذكره الخصم من ${B}: والرد عليه ${B}.
+
+## رابعًا: الطلبات
+1. ${B}`,
+    defense: `## أولًا: الوقائع
+${facts}
+
+## ثانيًا: الدفوع الشكلية
+1. الدفع بعدم الاختصاص ${B}
+
+## ثالثًا: الدفوع الموضوعية
+1. ${B}
+2. ${B}
+
+## رابعًا: الطلبات
+1. رد دعوى المدعي.`,
+    appeal: `نتقدم بلائحتنا الاعتراضية بطلب الاستئناف على الحكم المشار إليه، خلال المدة النظامية، للأسباب الآتية:
+
+## أولًا: ملخص الوقائع والحكم
+${facts}
+
+## ثانيًا: أسباب الاعتراض
+1. الخطأ في فهم الوقائع: ${B}
+2. الخطأ في تطبيق النظام: ${B}
+3. إغفال دفوع أو بينات جوهرية: ${B}
+
+## ثالثًا: الطلبات
+1. قبول الاعتراض شكلًا لتقديمه في المدة النظامية.
+2. نقض الحكم والحكم بـ ${B}.
+3. نظر الاعتراض مرافعةً (عند الحاجة).`,
+    cassation: `نتقدم بلائحتنا الاعتراضية بطلب النقض على حكم محكمة الاستئناف المشار إليه، خلال المدة النظامية، استنادًا إلى أسباب النقض المحددة نظامًا (يُتحقق من رقم المادة):
+
+## أولًا: ملخص الحكم
+${B}
+
+## ثانيًا: أسباب النقض
+1. مخالفة أحكام الشريعة الإسلامية أو الأنظمة: ${B}
+2. صدور الحكم من محكمة غير مشكّلة تشكيلًا سليمًا: ${B}
+3. صدور الحكم من محكمة أو دائرة غير مختصة: ${B}
+4. الخطأ في تكييف الواقعة أو وصفها: ${B}
+
+## ثالثًا: الطلبات
+1. قبول الاعتراض شكلًا.
+2. نقض الحكم وإعادته إلى المحكمة التي أصدرته للحكم فيه من جديد.`,
+    review: `نتقدم بالتماس إعادة النظر في الحكم النهائي المشار إليه، خلال المدة النظامية من تاريخ العلم بسبب الالتماس (يُتحقق من رقم المادة):
+
+## أولًا: الحالة المنطبقة
+${B}
+(مثل: ظهور تزوير الأوراق، أو الحصول على أوراق قاطعة لم يمكن تقديمها، أو غش الخصم، أو الحكم بما لم يُطلب، أو تناقض المنطوق، أو الحكم الغيابي، أو عدم صحة التمثيل)
+
+## ثانيًا: الوقائع وتاريخ العلم
+${B}
+
+## ثالثًا: الأدلة
+1. ${B}
+
+## رابعًا: الطلبات
+1. قبول الالتماس شكلًا.
+2. إلغاء الحكم والحكم بـ ${B}.`,
+    closing: `## أولًا: ملخص الدعوى
+${facts}
+
+## ثانيًا: ما ثبت أثناء نظر الدعوى
+1. ${B}
+
+## ثالثًا: الطلبات الختامية
+1. ${B}`,
+    execution: `## أولًا: بيانات السند التنفيذي
+| نوع السند | ${B} |
+| رقمه وتاريخه | ${B} |
+| المبلغ / المطلوب تنفيذه | ${B} |
+
+## ثانيًا: الطلبات
+1. تنفيذ السند التنفيذي المرفق بحق المنفذ ضده.
+2. ${B}`,
+  };
+  return `${head}
+${addr}
+السلام عليكم ورحمة الله وبركاته، وبعد:
+
+${sections[type] || sections.claim}${notes ? `
+
+## ملاحظات المحامي (تُحذف قبل التقديم)
+${notes}` : ""}
+
+> والله يحفظكم ويرعاكم،،
+
+!| وكيل ${role} |
+!| ${law?.name || B} — ${S.firm.nameAr} |
+!| ترخيص رقم: ${law?.license || B} |
+!| التوقيع: ........................ |`;
+}
+
 /* ---------- Drafting page ---------- */
 function docRow(d) {
   const c = caseById(d.caseId);
@@ -1973,10 +2108,10 @@ function docRow(d) {
 VIEWS.drafting = () => {
   const tab = S.route.tab || "home";
   const docs = [...S.data.docs].sort((a, b) => (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || ""));
-  const head = `<div class="page-head"><div><h1>الصياغة</h1><p>عقود من النموذج الأساسي، عروض أتعاب، ولوائح وردود يكتبها المساعد من ملف القضية.</p></div></div>
+  const head = `<div class="page-head"><div><h1>الصياغة</h1><p>عقود من النموذج الأساسي، عروض أتعاب، ولوائح وردود ${S.caps.sample ? "يكتبها المساعد من ملف القضية" : "بهياكلها النظامية"}.</p></div></div>
     <div class="tabs">${[["home", "إنشاء"], ["pleading", "اللوائح والردود"], ["contract", "العقود"], ["proposal", "عروض الأتعاب"], ["all", "كل المستندات", docs.length]].map(([k, t, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${t}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>`;
   if (tab === "home") return head + `<div class="gen-grid">
-      <button class="card gen" data-act="tab" data-tab="pleading"><span class="ic">${icon("scale")}</span><b>لائحة أو رد</b><span>صحيفة دعوى، مذكرة جوابية، لائحة اعتراضية… يكتبها المساعد من وقائع القضية ومرفقاتها.</span></button>
+      <button class="card gen" data-act="tab" data-tab="pleading"><span class="ic">${icon("scale")}</span><b>لائحة أو رد</b><span>صحيفة دعوى، مذكرة جوابية، استئناف، نقض، التماس… ${S.caps.sample ? "يكتبها المساعد من وقائع القضية ومرفقاتها." : "بهيكلها النظامي وبيانات القضية جاهزة للتعبئة."}</span></button>
       <button class="card gen" data-act="tab" data-tab="contract"><span class="ic">${icon("contract")}</span><b>عقد خدمات قانونية</b><span>من النموذج الأساسي للمكتب، تُملأ بياناته تلقائيًا من العميل والقضية.</span></button>
       <button class="card gen" data-act="tab" data-tab="proposal"><span class="ic">${icon("coin")}</span><b>عرض أتعاب</b><span>بنود الخدمات والمبالغ والضريبة وشروط السداد بترويسة المكتب.</span></button></div>
     <div class="card"><div class="card-h"><h3>آخر المستندات</h3></div>${docs.length ? `<div class="list">${docs.slice(0, 8).map(docRow).join("")}</div>` : emptyBox("docs", "لم تُنشأ مستندات بعد", "")}</div>`;
@@ -1988,14 +2123,14 @@ const GEN_FORMS = {};
 GEN_FORMS.pleading = () => {
   const cid = dv("pl.case"); const c = caseById(cid);
   const files = c && S.caseLoadedFor === cid ? S.caseFiles : [];
-  return `<form data-form="genPleading" class="card stack" style="gap:14px"><div class="card-h"><h3>صياغة لائحة أو رد بالمساعد</h3><span class="ai-tag">${icon("spark")}يستخدم وقائع القضية وتحليل مرفقاتها</span></div>
+  return `<form data-form="genPleading" class="card stack" style="gap:14px"><div class="card-h"><h3>${S.caps.sample ? "صياغة لائحة أو رد بالمساعد" : "لائحة أو رد من النموذج"}</h3>${S.caps.sample ? `<span class="ai-tag">${icon("spark")}يستخدم وقائع القضية وتحليل مرفقاتها</span>` : ""}</div>
     <div class="grid2">
       <div class="field"><label for="pl-case">القضية</label><select id="pl-case" class="inp" name="caseId" required data-ch="plCase">${caseOpts(cid, "— اختر القضية —")}</select></div>
       <div class="field"><label for="pl-type">نوع المستند</label><select id="pl-type" class="inp" name="type">${Object.entries(PLEADING_TYPES).map(([k, v]) => opt(k, `${v.t} — ${v.hint}`, dv("pl.type", "claim"))).join("")}</select></div>
       <div class="field span2"><label for="pl-file">مستند يُرد عليه (اختياري)</label><select id="pl-file" class="inp" name="fileId">${opt("", c ? (files.length ? "— بدون —" : "لا توجد مرفقات في هذه القضية") : "اختر القضية أولًا")}${files.map((f) => opt(f.id, `${f.name} · ${f.category || ""}`)).join("")}</select><span class="hint">مثل مذكرة الخصم أو الحكم المعترض عليه؛ يقرأ المساعد نصه ويرد عليه.</span></div>
       <div class="field span2"><label for="pl-ins">توجيهات المحامي</label><textarea id="pl-ins" class="inp" name="instructions" rows="5" data-draft="pl.ins" placeholder="أهم الدفوع، الطلبات، المستندات التي نستند إليها، أي نقطة يجب التركيز عليها أو تجنبها…">${esc(dv("pl.ins"))}</textarea></div>
     </div>
-    <div class="row"><button class="btn gold" type="submit">${icon("spark")}اكتب المسودة</button><span class="muted small">تُفتح المسودة في المحرر لتعديلها ثم تنزيلها بصيغة Word.</span></div></form>`;
+    <div class="row"><button class="btn gold" type="submit">${S.caps.sample ? icon("spark") + "اكتب المسودة" : icon("scale") + "أنشئ اللائحة"}</button><span class="muted small">${S.caps.sample ? "تُفتح المسودة في المحرر لتعديلها ثم تنزيلها بصيغة Word." : "تُفتح بهيكلها وبيانات القضية، والفراغات مظللة لتعبئتها ثم تنزيلها بصيغة Word."}</span></div></form>`;
 };
 CH.plCase = (el) => { S.drafts["pl.case"] = el.value; if (el.value) subscribeCase(el.value); render(); };
 GEN_FORMS.contract = () => `<form data-form="genContract" class="card stack" style="gap:14px"><div class="card-h"><h3>عقد من النموذج الأساسي</h3><a class="sub" data-act="go" data-r="settings" style="cursor:pointer">تعديل النماذج ←</a></div>
@@ -2116,8 +2251,13 @@ ${f.iban ? `- يُسدد بالتحويل إلى حساب المكتب لدى ${
   go("doc", id);
 };
 F.genPleading = async (d) => {
-  if (!guardWrite() || !needSample()) return;
+  if (!guardWrite()) return;
   const c = caseById(d.caseId); if (!c) return toast("اختر القضية", true);
+  if (!S.caps.sample) {
+    const T0 = PLEADING_TYPES[d.type]; const title0 = `${T0.t} — ${c.title}`;
+    const id0 = await add("docs", { kind: "pleading", subtype: d.type, title: title0, caseId: c.id, clientId: c.clientId, body: pleadingTemplate(c, d.type, d.instructions), status: "draft", updatedAt: nowIso() });
+    await logCase(c.id, "doc", `أُنشئت لائحة من النموذج: ${T0.t}`); S.drafts["pl.ins"] = ""; go("doc", id0); return;
+  }
   const T = PLEADING_TYPES[d.type];
   const target = d.fileId ? byId(S.caseFiles, d.fileId) : null;
   const files = S.caseFiles.filter((f) => f.analysis).map((f) => `• ${f.name}: ${f.analysis.summary}`).join("\n");
@@ -2568,7 +2708,7 @@ VIEWS.consult = () => {
     <div class="facts"><div class="fact"><div class="k">العميل</div><div class="v">${esc(x.clientId ? clientName(x.clientId) : x.prospect || "—")}</div></div><div class="fact"><div class="k">الجوال</div><div class="v num">${esc(phone || "—")}</div></div>
       <div class="fact"><div class="k">المستشار</div><div class="v">${x.lawyerId ? esc(lawyerName(x.lawyerId)) : isManager() ? `<a data-act="editConsult" data-id="${x.id}" style="cursor:pointer">إسناد</a>` : "بانتظار إسناد المدير"}</div></div><div class="fact"><div class="k">الأتعاب</div><div class="v num">${x.fee ? money(x.fee) + " ر.س" : "—"}</div></div></div></div>
   <div class="cols"><div class="stack">
-    <div class="card"><div class="card-h"><h3>الرأي القانوني</h3><div class="row">${gen ? `<span class="thinking small">يكتب المساعد…</span><button class="btn sm" data-act="stopGen">إيقاف</button>` : `<button class="btn sm gold" data-act="genOpinion" data-id="${x.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}${ans ? "إعادة الصياغة" : "صياغة المسودة"}</button>`}</div></div>
+    <div class="card"><div class="card-h"><h3>الرأي القانوني</h3><div class="row">${gen ? `<span class="thinking small">يكتب المساعد…</span><button class="btn sm" data-act="stopGen">إيقاف</button>` : S.caps.sample ? `<button class="btn sm gold" data-act="genOpinion" data-id="${x.id}">${icon("spark")}${ans ? "إعادة الصياغة" : "صياغة المسودة"}</button>` : ans ? "" : `<button class="btn sm gold" data-act="opinionTemplate" data-id="${x.id}">${icon("docs")}أدرج هيكل الرأي</button>`}</div></div>
       <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" data-live="csLive" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
       <div class="row" style="margin-top:10px"><button class="btn primary" data-act="saveAnswer" data-id="${x.id}">${icon("check")}حفظ</button><button class="btn" data-act="opinionDoc" data-id="${x.id}">${icon("docs")}مستند Word بترويسة المكتب</button>
         <a id="cs-wa" class="btn" href="${esc(waHref(phone, ans))}" target="_blank" rel="noopener">${icon("wa")}إرسال واتساب</a></div></div></div>
@@ -2580,6 +2720,40 @@ VIEWS.consult = () => {
 };
 CH.csLive = () => { const a = $("#cs-wa"); const x = byId(S.data.consults, S.route.id); if (a && x) a.href = waHref(x.phone || byId(S.data.clients, x.clientId)?.phone, $("#cs-answer").value); };
 CH.consultStatus = async (el) => { await upd(`consults/${el.dataset.id}`, { status: el.value, ...(el.value === "done" ? { doneAt: nowIso() } : {}) }); if (el.value === "done") { for (const t of S.data.tasks.filter((t) => t.consultId === el.dataset.id && t.status !== "done")) await upd(`tasks/${t.id}`, { status: "done", doneAt: nowIso() }); } toast("حُدّثت الحالة"); };
+A.opinionTemplate = (el) => {
+  const x = byId(S.data.consults, el.dataset.id); const B0 = "[........]";
+  const t = `> بسم الله الرحمن الرحيم
+# مذكرة رأي قانوني
+| البيان | التفاصيل |
+| العميل | ${x.clientId ? clientName(x.clientId) : x.prospect || B0} |
+| الموضوع | ${x.subject} |
+| التاريخ | ${fmtDate(todayStr())} |
+
+## أولًا: الوقائع كما وردت
+${x.question || B0}
+
+## ثانيًا: المسألة القانونية
+${B0}
+
+## ثالثًا: الأساس النظامي
+1. ${B0}
+
+## رابعًا: التحليل
+${B0}
+
+## خامسًا: الرأي والتوصيات
+1. ${B0}
+
+## سادسًا: الجهة المختصة والمهل النظامية
+${B0}
+
+## سابعًا: تحفظات
+هذا الرأي مبني على الوقائع والمستندات المقدمة فقط، ويتغير بتغيرها.
+
+!| ${lawyerName(x.lawyerId) === "غير مسند" ? B0 : lawyerName(x.lawyerId)} |
+!| ${S.firm.nameAr} |`;
+  S.drafts["csa." + x.id] = t; render();
+};
 A.saveAnswer = async (el) => { const x = byId(S.data.consults, el.dataset.id); await upd(`consults/${x.id}`, { answer: $("#cs-answer").value, status: x.status === "new" ? "progress" : x.status }); delete S.drafts["csa." + x.id]; toast("حُفظ الرأي"); };
 A.genOpinion = async (el) => {
   if (!needSample()) return;

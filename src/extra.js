@@ -326,7 +326,7 @@ VIEWS.consult = () => {
     <div class="facts"><div class="fact"><div class="k">العميل</div><div class="v">${esc(x.clientId ? clientName(x.clientId) : x.prospect || "—")}</div></div><div class="fact"><div class="k">الجوال</div><div class="v num">${esc(phone || "—")}</div></div>
       <div class="fact"><div class="k">المستشار</div><div class="v">${x.lawyerId ? esc(lawyerName(x.lawyerId)) : isManager() ? `<a data-act="editConsult" data-id="${x.id}" style="cursor:pointer">إسناد</a>` : "بانتظار إسناد المدير"}</div></div><div class="fact"><div class="k">الأتعاب</div><div class="v num">${x.fee ? money(x.fee) + " ر.س" : "—"}</div></div></div></div>
   <div class="cols"><div class="stack">
-    <div class="card"><div class="card-h"><h3>الرأي القانوني</h3><div class="row">${gen ? `<span class="thinking small">يكتب المساعد…</span><button class="btn sm" data-act="stopGen">إيقاف</button>` : `<button class="btn sm gold" data-act="genOpinion" data-id="${x.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}${ans ? "إعادة الصياغة" : "صياغة المسودة"}</button>`}</div></div>
+    <div class="card"><div class="card-h"><h3>الرأي القانوني</h3><div class="row">${gen ? `<span class="thinking small">يكتب المساعد…</span><button class="btn sm" data-act="stopGen">إيقاف</button>` : S.caps.sample ? `<button class="btn sm gold" data-act="genOpinion" data-id="${x.id}">${icon("spark")}${ans ? "إعادة الصياغة" : "صياغة المسودة"}</button>` : ans ? "" : `<button class="btn sm gold" data-act="opinionTemplate" data-id="${x.id}">${icon("docs")}أدرج هيكل الرأي</button>`}</div></div>
       <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" data-live="csLive" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
       <div class="row" style="margin-top:10px"><button class="btn primary" data-act="saveAnswer" data-id="${x.id}">${icon("check")}حفظ</button><button class="btn" data-act="opinionDoc" data-id="${x.id}">${icon("docs")}مستند Word بترويسة المكتب</button>
         <a id="cs-wa" class="btn" href="${esc(waHref(phone, ans))}" target="_blank" rel="noopener">${icon("wa")}إرسال واتساب</a></div></div></div>
@@ -338,6 +338,40 @@ VIEWS.consult = () => {
 };
 CH.csLive = () => { const a = $("#cs-wa"); const x = byId(S.data.consults, S.route.id); if (a && x) a.href = waHref(x.phone || byId(S.data.clients, x.clientId)?.phone, $("#cs-answer").value); };
 CH.consultStatus = async (el) => { await upd(`consults/${el.dataset.id}`, { status: el.value, ...(el.value === "done" ? { doneAt: nowIso() } : {}) }); if (el.value === "done") { for (const t of S.data.tasks.filter((t) => t.consultId === el.dataset.id && t.status !== "done")) await upd(`tasks/${t.id}`, { status: "done", doneAt: nowIso() }); } toast("حُدّثت الحالة"); };
+A.opinionTemplate = (el) => {
+  const x = byId(S.data.consults, el.dataset.id); const B0 = "[........]";
+  const t = `> بسم الله الرحمن الرحيم
+# مذكرة رأي قانوني
+| البيان | التفاصيل |
+| العميل | ${x.clientId ? clientName(x.clientId) : x.prospect || B0} |
+| الموضوع | ${x.subject} |
+| التاريخ | ${fmtDate(todayStr())} |
+
+## أولًا: الوقائع كما وردت
+${x.question || B0}
+
+## ثانيًا: المسألة القانونية
+${B0}
+
+## ثالثًا: الأساس النظامي
+1. ${B0}
+
+## رابعًا: التحليل
+${B0}
+
+## خامسًا: الرأي والتوصيات
+1. ${B0}
+
+## سادسًا: الجهة المختصة والمهل النظامية
+${B0}
+
+## سابعًا: تحفظات
+هذا الرأي مبني على الوقائع والمستندات المقدمة فقط، ويتغير بتغيرها.
+
+!| ${lawyerName(x.lawyerId) === "غير مسند" ? B0 : lawyerName(x.lawyerId)} |
+!| ${S.firm.nameAr} |`;
+  S.drafts["csa." + x.id] = t; render();
+};
 A.saveAnswer = async (el) => { const x = byId(S.data.consults, el.dataset.id); await upd(`consults/${x.id}`, { answer: $("#cs-answer").value, status: x.status === "new" ? "progress" : x.status }); delete S.drafts["csa." + x.id]; toast("حُفظ الرأي"); };
 A.genOpinion = async (el) => {
   if (!needSample()) return;

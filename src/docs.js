@@ -129,6 +129,140 @@ const OBJ_GUIDE = {
   review: `التماس إعادة النظر في الأحكام النهائية (نظام المرافعات الشرعية، مع التحقق من المادة): يُقبل في حالات محصورة، منها: إذا بُني الحكم على أوراق ظهر بعد الحكم تزويرها أو على شهادة قُضي بأنها مزوّرة؛ إذا حصل الملتمس بعد الحكم على أوراق قاطعة في الدعوى لم يكن ممكنًا تقديمها قبله؛ إذا وقع من الخصم غش كان من شأنه التأثير في الحكم؛ إذا قضى الحكم بشيء لم يطلبه الخصوم أو بأكثر مما طلبوه؛ إذا كان منطوق الحكم يناقض بعضه بعضًا؛ إذا كان الحكم غيابيًا؛ إذا صدر الحكم على من لم يكن ممثلًا تمثيلًا صحيحًا. المهلة ثلاثون يومًا تبدأ بحسب الحالة (من ظهور التزوير أو الورقة أو الغش، أو من العلم بالحكم). حدّد الحالة المنطبقة بوضوح وتاريخ العلم بها، ثم الطلبات.`,
 };
 
+/* ---------- Pleading templates (used when the assistant is off) ---------- */
+const B = "[........]";
+function pleadingTemplate(c, type, notes) {
+  const T = PLEADING_TYPES[type]; const j = c.judgment || {}; const law = byId(S.data.lawyers, c.lawyerId);
+  const role = c.clientRole || "الموكل";
+  const court = [c.court, c.circuit, c.city].filter(Boolean).join(" — ") || B;
+  const head = `> بسم الله الرحمن الرحيم
+# ${T.t}
+
+| البيان | التفاصيل |
+| ${role} | ${clientName(c.clientId)} |
+| الخصم | ${c.opponent || B} |
+| المحكمة / الدائرة | ${court} |
+| رقم القضية | ${c.najiz || B} |${["appeal", "cassation", "review"].includes(type) ? `
+| الحكم محل الاعتراض | رقم ${j.no || B} وتاريخ ${j.date ? fmtDate(j.date) : B} |
+| تاريخ التسلّم / العلم | ${j.receivedAt ? fmtDate(j.receivedAt) : B} |` : ""}
+`;
+  const addr = type === "appeal" ? "> أصحاب الفضيلة رئيس وأعضاء محكمة الاستئناف وفقهم الله"
+    : type === "cassation" ? "> أصحاب الفضيلة رئيس وأعضاء المحكمة العليا وفقهم الله"
+    : `> فضيلة رئيس ${c.circuit || "الدائرة"}${c.court ? " في " + c.court : ""}${c.city ? " بمدينة " + c.city : ""} سلمه الله`;
+  const facts = (c.description || "").trim() || B;
+  const sections = {
+    claim: `## أولًا: الوقائع
+${facts}
+
+## ثانيًا: الأسانيد النظامية
+1. ${B}
+2. ${B}
+
+## ثالثًا: الطلبات
+بناءً على ما تقدم نطلب من فضيلتكم:
+1. ${B}
+2. إلزام المدعى عليه بالمصروفات وأتعاب المحاماة.`,
+    reply: `## أولًا: ملخص دعوى الخصم
+${B}
+
+## ثانيًا: الدفوع الشكلية
+1. ${B}
+
+## ثالثًا: الرد على الدفوع الموضوعية
+1. ما ذكره الخصم من ${B}: والرد عليه ${B}.
+2. ما ذكره الخصم من ${B}: والرد عليه ${B}.
+
+## رابعًا: الطلبات
+1. ${B}`,
+    defense: `## أولًا: الوقائع
+${facts}
+
+## ثانيًا: الدفوع الشكلية
+1. الدفع بعدم الاختصاص ${B}
+
+## ثالثًا: الدفوع الموضوعية
+1. ${B}
+2. ${B}
+
+## رابعًا: الطلبات
+1. رد دعوى المدعي.`,
+    appeal: `نتقدم بلائحتنا الاعتراضية بطلب الاستئناف على الحكم المشار إليه، خلال المدة النظامية، للأسباب الآتية:
+
+## أولًا: ملخص الوقائع والحكم
+${facts}
+
+## ثانيًا: أسباب الاعتراض
+1. الخطأ في فهم الوقائع: ${B}
+2. الخطأ في تطبيق النظام: ${B}
+3. إغفال دفوع أو بينات جوهرية: ${B}
+
+## ثالثًا: الطلبات
+1. قبول الاعتراض شكلًا لتقديمه في المدة النظامية.
+2. نقض الحكم والحكم بـ ${B}.
+3. نظر الاعتراض مرافعةً (عند الحاجة).`,
+    cassation: `نتقدم بلائحتنا الاعتراضية بطلب النقض على حكم محكمة الاستئناف المشار إليه، خلال المدة النظامية، استنادًا إلى أسباب النقض المحددة نظامًا (يُتحقق من رقم المادة):
+
+## أولًا: ملخص الحكم
+${B}
+
+## ثانيًا: أسباب النقض
+1. مخالفة أحكام الشريعة الإسلامية أو الأنظمة: ${B}
+2. صدور الحكم من محكمة غير مشكّلة تشكيلًا سليمًا: ${B}
+3. صدور الحكم من محكمة أو دائرة غير مختصة: ${B}
+4. الخطأ في تكييف الواقعة أو وصفها: ${B}
+
+## ثالثًا: الطلبات
+1. قبول الاعتراض شكلًا.
+2. نقض الحكم وإعادته إلى المحكمة التي أصدرته للحكم فيه من جديد.`,
+    review: `نتقدم بالتماس إعادة النظر في الحكم النهائي المشار إليه، خلال المدة النظامية من تاريخ العلم بسبب الالتماس (يُتحقق من رقم المادة):
+
+## أولًا: الحالة المنطبقة
+${B}
+(مثل: ظهور تزوير الأوراق، أو الحصول على أوراق قاطعة لم يمكن تقديمها، أو غش الخصم، أو الحكم بما لم يُطلب، أو تناقض المنطوق، أو الحكم الغيابي، أو عدم صحة التمثيل)
+
+## ثانيًا: الوقائع وتاريخ العلم
+${B}
+
+## ثالثًا: الأدلة
+1. ${B}
+
+## رابعًا: الطلبات
+1. قبول الالتماس شكلًا.
+2. إلغاء الحكم والحكم بـ ${B}.`,
+    closing: `## أولًا: ملخص الدعوى
+${facts}
+
+## ثانيًا: ما ثبت أثناء نظر الدعوى
+1. ${B}
+
+## ثالثًا: الطلبات الختامية
+1. ${B}`,
+    execution: `## أولًا: بيانات السند التنفيذي
+| نوع السند | ${B} |
+| رقمه وتاريخه | ${B} |
+| المبلغ / المطلوب تنفيذه | ${B} |
+
+## ثانيًا: الطلبات
+1. تنفيذ السند التنفيذي المرفق بحق المنفذ ضده.
+2. ${B}`,
+  };
+  return `${head}
+${addr}
+السلام عليكم ورحمة الله وبركاته، وبعد:
+
+${sections[type] || sections.claim}${notes ? `
+
+## ملاحظات المحامي (تُحذف قبل التقديم)
+${notes}` : ""}
+
+> والله يحفظكم ويرعاكم،،
+
+!| وكيل ${role} |
+!| ${law?.name || B} — ${S.firm.nameAr} |
+!| ترخيص رقم: ${law?.license || B} |
+!| التوقيع: ........................ |`;
+}
+
 /* ---------- Drafting page ---------- */
 function docRow(d) {
   const c = caseById(d.caseId);
@@ -137,10 +271,10 @@ function docRow(d) {
 VIEWS.drafting = () => {
   const tab = S.route.tab || "home";
   const docs = [...S.data.docs].sort((a, b) => (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || ""));
-  const head = `<div class="page-head"><div><h1>الصياغة</h1><p>عقود من النموذج الأساسي، عروض أتعاب، ولوائح وردود يكتبها المساعد من ملف القضية.</p></div></div>
+  const head = `<div class="page-head"><div><h1>الصياغة</h1><p>عقود من النموذج الأساسي، عروض أتعاب، ولوائح وردود ${S.caps.sample ? "يكتبها المساعد من ملف القضية" : "بهياكلها النظامية"}.</p></div></div>
     <div class="tabs">${[["home", "إنشاء"], ["pleading", "اللوائح والردود"], ["contract", "العقود"], ["proposal", "عروض الأتعاب"], ["all", "كل المستندات", docs.length]].map(([k, t, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${t}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>`;
   if (tab === "home") return head + `<div class="gen-grid">
-      <button class="card gen" data-act="tab" data-tab="pleading"><span class="ic">${icon("scale")}</span><b>لائحة أو رد</b><span>صحيفة دعوى، مذكرة جوابية، لائحة اعتراضية… يكتبها المساعد من وقائع القضية ومرفقاتها.</span></button>
+      <button class="card gen" data-act="tab" data-tab="pleading"><span class="ic">${icon("scale")}</span><b>لائحة أو رد</b><span>صحيفة دعوى، مذكرة جوابية، استئناف، نقض، التماس… ${S.caps.sample ? "يكتبها المساعد من وقائع القضية ومرفقاتها." : "بهيكلها النظامي وبيانات القضية جاهزة للتعبئة."}</span></button>
       <button class="card gen" data-act="tab" data-tab="contract"><span class="ic">${icon("contract")}</span><b>عقد خدمات قانونية</b><span>من النموذج الأساسي للمكتب، تُملأ بياناته تلقائيًا من العميل والقضية.</span></button>
       <button class="card gen" data-act="tab" data-tab="proposal"><span class="ic">${icon("coin")}</span><b>عرض أتعاب</b><span>بنود الخدمات والمبالغ والضريبة وشروط السداد بترويسة المكتب.</span></button></div>
     <div class="card"><div class="card-h"><h3>آخر المستندات</h3></div>${docs.length ? `<div class="list">${docs.slice(0, 8).map(docRow).join("")}</div>` : emptyBox("docs", "لم تُنشأ مستندات بعد", "")}</div>`;
@@ -152,14 +286,14 @@ const GEN_FORMS = {};
 GEN_FORMS.pleading = () => {
   const cid = dv("pl.case"); const c = caseById(cid);
   const files = c && S.caseLoadedFor === cid ? S.caseFiles : [];
-  return `<form data-form="genPleading" class="card stack" style="gap:14px"><div class="card-h"><h3>صياغة لائحة أو رد بالمساعد</h3><span class="ai-tag">${icon("spark")}يستخدم وقائع القضية وتحليل مرفقاتها</span></div>
+  return `<form data-form="genPleading" class="card stack" style="gap:14px"><div class="card-h"><h3>${S.caps.sample ? "صياغة لائحة أو رد بالمساعد" : "لائحة أو رد من النموذج"}</h3>${S.caps.sample ? `<span class="ai-tag">${icon("spark")}يستخدم وقائع القضية وتحليل مرفقاتها</span>` : ""}</div>
     <div class="grid2">
       <div class="field"><label for="pl-case">القضية</label><select id="pl-case" class="inp" name="caseId" required data-ch="plCase">${caseOpts(cid, "— اختر القضية —")}</select></div>
       <div class="field"><label for="pl-type">نوع المستند</label><select id="pl-type" class="inp" name="type">${Object.entries(PLEADING_TYPES).map(([k, v]) => opt(k, `${v.t} — ${v.hint}`, dv("pl.type", "claim"))).join("")}</select></div>
       <div class="field span2"><label for="pl-file">مستند يُرد عليه (اختياري)</label><select id="pl-file" class="inp" name="fileId">${opt("", c ? (files.length ? "— بدون —" : "لا توجد مرفقات في هذه القضية") : "اختر القضية أولًا")}${files.map((f) => opt(f.id, `${f.name} · ${f.category || ""}`)).join("")}</select><span class="hint">مثل مذكرة الخصم أو الحكم المعترض عليه؛ يقرأ المساعد نصه ويرد عليه.</span></div>
       <div class="field span2"><label for="pl-ins">توجيهات المحامي</label><textarea id="pl-ins" class="inp" name="instructions" rows="5" data-draft="pl.ins" placeholder="أهم الدفوع، الطلبات، المستندات التي نستند إليها، أي نقطة يجب التركيز عليها أو تجنبها…">${esc(dv("pl.ins"))}</textarea></div>
     </div>
-    <div class="row"><button class="btn gold" type="submit">${icon("spark")}اكتب المسودة</button><span class="muted small">تُفتح المسودة في المحرر لتعديلها ثم تنزيلها بصيغة Word.</span></div></form>`;
+    <div class="row"><button class="btn gold" type="submit">${S.caps.sample ? icon("spark") + "اكتب المسودة" : icon("scale") + "أنشئ اللائحة"}</button><span class="muted small">${S.caps.sample ? "تُفتح المسودة في المحرر لتعديلها ثم تنزيلها بصيغة Word." : "تُفتح بهيكلها وبيانات القضية، والفراغات مظللة لتعبئتها ثم تنزيلها بصيغة Word."}</span></div></form>`;
 };
 CH.plCase = (el) => { S.drafts["pl.case"] = el.value; if (el.value) subscribeCase(el.value); render(); };
 GEN_FORMS.contract = () => `<form data-form="genContract" class="card stack" style="gap:14px"><div class="card-h"><h3>عقد من النموذج الأساسي</h3><a class="sub" data-act="go" data-r="settings" style="cursor:pointer">تعديل النماذج ←</a></div>
@@ -280,8 +414,13 @@ ${f.iban ? `- يُسدد بالتحويل إلى حساب المكتب لدى ${
   go("doc", id);
 };
 F.genPleading = async (d) => {
-  if (!guardWrite() || !needSample()) return;
+  if (!guardWrite()) return;
   const c = caseById(d.caseId); if (!c) return toast("اختر القضية", true);
+  if (!S.caps.sample) {
+    const T0 = PLEADING_TYPES[d.type]; const title0 = `${T0.t} — ${c.title}`;
+    const id0 = await add("docs", { kind: "pleading", subtype: d.type, title: title0, caseId: c.id, clientId: c.clientId, body: pleadingTemplate(c, d.type, d.instructions), status: "draft", updatedAt: nowIso() });
+    await logCase(c.id, "doc", `أُنشئت لائحة من النموذج: ${T0.t}`); S.drafts["pl.ins"] = ""; go("doc", id0); return;
+  }
   const T = PLEADING_TYPES[d.type];
   const target = d.fileId ? byId(S.caseFiles, d.fileId) : null;
   const files = S.caseFiles.filter((f) => f.analysis).map((f) => `• ${f.name}: ${f.analysis.summary}`).join("\n");

@@ -60,6 +60,7 @@ if not (docs / "config.js").exists():
 window.RAKZ_CONFIG = {
   supabaseUrl: "https://YOUR-PROJECT.supabase.co",
   supabaseAnonKey: "YOUR-ANON-KEY",
+  aiEnabled: false, // المساعد الذكي (مدفوع عبر Anthropic API): اجعلها true بعد إضافة ANTHROPIC_API_KEY في Supabase
   ownerEmail: "", // بريد المدير الرئيسي (اختياري): يمنحه صلاحية الإسناد قبل إضافة الفريق
 };
 """, encoding="utf-8")

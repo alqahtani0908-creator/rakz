@@ -28,7 +28,10 @@
 4. من **Authentication ← URL Configuration**: ضع رابط المنصة على GitHub Pages في **Site URL** (مثل `https://USERNAME.github.io/rakz/`).
 5. من **Authentication ← Users ← Invite user**: ادعُ نفسك وفريقك بالبريد. كل مدعو يدخل برابط يصله، ويمكنه لاحقًا الدخول برسالة على بريده.
 
-### 2) المساعد الذكي — Edge Function
+### 2) المساعد الذكي — اختياري (مدفوع)
+
+المنصة تعمل كاملة دونه: اللوائح والآراء القانونية تُنشأ من نماذج بهيكلها النظامي وبيانات القضية، والفراغات مظللة لتعبئتها. لتفعيله لاحقًا نفّذ ما يلي ثم اجعل `aiEnabled: true` في `docs/config.js`.
+
 
 1. أنشئ مفتاح API من [platform.claude.com](https://platform.claude.com) (Settings ← API Keys).
 2. في Supabase: **Edge Functions ← Secrets** ← أضف `ANTHROPIC_API_KEY` بقيمة المفتاح.

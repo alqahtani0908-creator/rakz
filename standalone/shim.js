@@ -182,6 +182,7 @@
   };
   sample.limits = async () => ({ maxPromptBytes: 900000, images: { maxCount: 8, maxInputBytes: 20e6, mediaTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"] }, tools: { maxCount: 0 } });
 
-  const caps = { db, user, sample, assets, downloads };
+  // aiEnabled: false in config.js runs the platform without the paid AI connection.
+  const caps = { db, user, sample: CFG.aiEnabled === false ? null : sample, assets, downloads };
   window.claude = { use: (name) => (sb ? ready.then(() => caps[name] || null) : Promise.resolve(null)) };
 })();
