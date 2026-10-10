@@ -28,6 +28,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: cors });
 
+  // The platform's public key is itself a valid JWT, so also require a real signed-in member.
+  const auth = req.headers.get("Authorization") ?? "";
+  const who = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, { headers: { Authorization: auth, apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "" } });
+  if (!who.ok) return new Response("Sign in required", { status: 401, headers: cors });
+
   let body: { messages?: Turn[]; images?: ImagePart[]; tier?: string };
   try { body = await req.json(); } catch { return new Response("Bad JSON", { status: 400, headers: cors }); }
   const turns = (body.messages ?? []).filter((m) => m && m.content);
