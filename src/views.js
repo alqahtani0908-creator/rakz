@@ -440,10 +440,15 @@ VIEWS.team = () => {
   return `<div class="page-head"><div><h1>فريق العمل</h1><p>اختر اسمك من «تعمل باسم» أسفل القائمة. صفة «مدير» أو «شريك» تمنح صلاحية إسناد القضايا والاستشارات.</p></div><button class="btn gold" data-act="newLawyer">${icon("plus")}إضافة عضو</button></div>
   ${S.data.lawyers.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الاسم</th><th>الصفة</th><th>التخصص</th><th>رقم الترخيص</th><th>قضايا جارية</th><th>الحساب</th><th></th></tr></thead><tbody>
     ${S.data.lawyers.map((l) => `<tr><td class="t"><span class="who"><span class="avatar">${esc(initials(l.name))}</span>${esc(l.name)}${l.active === false ? ' <span class="pill">موقوف</span>' : ""}</span></td><td>${esc(ROLES[l.role] || "")}</td><td>${esc(l.specialty || "—")}</td><td class="num">${esc(l.license || "—")}</td><td class="num">${act.filter((c) => c.lawyerId === l.id).length}</td>
-      <td>${l.id === myLid() ? pill("أنت", "gold") : `<button class="btn sm" data-act="linkThis" data-id="${l.id}">${icon("user")}أعمل باسمه</button>`}</td>
+      <td><div class="row" style="gap:6px;flex-wrap:nowrap">${l.id === myLid() ? pill("أنت", "gold") : `<button class="btn sm" data-act="linkThis" data-id="${l.id}">${icon("user")}أعمل باسمه</button>`}${window.RAKZ_PASSWORD && l.id !== myLid() ? (l.email ? `<a class="btn sm" href="${esc(teamInviteHref(l))}" target="_blank" rel="noopener" title="إرسال دعوة الدخول عبر واتساب">${icon("wa")}دعوة</a>` : `<span class="pill warn" title="أضف بريده حتى يستطيع إنشاء حسابه">بلا بريد</span>`) : ""}</div></td>
       <td><button class="btn sm ghost" data-act="editLawyer" data-id="${l.id}">${icon("edit")}</button></td></tr>`).join("")}</tbody></table></div>`
   : `<div class="card">${emptyBox("team", "أضف أعضاء المكتب", "أضف الشركاء والمحامين، ثم اختر اسمك من «تعمل باسم» أسفل القائمة.", `<button class="btn gold" data-act="createMe">${icon("plus")}ابدأ بملفك أنت</button>`)}</div>`}
-  <div class="card"><h3>دعوة الفريق</h3><p class="muted" style="margin:6px 0 0">شارك رابط المنصة مع الفريق من زر المشاركة، ويختار كل عضو اسمه من «تعمل باسم» أسفل القائمة.</p></div>`;
+  <div class="card"><h3>دعوة الفريق</h3><p class="muted" style="margin:6px 0 0">${window.RAKZ_PASSWORD ? "١) أضف العضو هنا ببريده الإلكتروني. ٢) اضغط «دعوة» لترسل له رابط المنصة عبر واتساب. ٣) يفتح الرابط ويختار «إنشاء حساب» بنفس البريد وكلمة مرور يختارها. لا يدخل المنصة إلا بريد مضاف هنا، وإيقاف العضو يمنع دخوله فورًا." : "شارك رابط المنصة مع الفريق من زر المشاركة، ويختار كل عضو اسمه من «تعمل باسم» أسفل القائمة."}</p></div>`;
+};
+function teamInviteHref(l) {
+  const url = location.origin + location.pathname;
+  const text = `السلام عليكم ${l.name}،\nأُضفت إلى منصة ${S.firm.nameAr}.\n\nالرابط: ${url}\nاختر «إنشاء حساب» وسجّل بهذا البريد: ${l.email}\nثم اختر كلمة مرور خاصة بك.`;
+  return waHref(l.phone || "", text);
 };
 function lawyerForm(l = {}) {
   return `<form id="lw-form" data-form="saveLawyer" class="grid2"><input type="hidden" name="id" value="${esc(l.id || "")}"><input type="hidden" name="self" value="${l.self ? "1" : ""}">
@@ -452,7 +457,7 @@ function lawyerForm(l = {}) {
     <div class="field"><label for="lw-sp">التخصص</label><input id="lw-sp" class="inp" name="specialty" value="${esc(l.specialty)}" placeholder="تجاري، عمالي، أحوال…"></div>
     <div class="field"><label for="lw-lic">رقم ترخيص المحاماة</label><input id="lw-lic" class="inp num" name="license" value="${esc(l.license)}"></div>
     <div class="field"><label for="lw-ph">الجوال</label><input id="lw-ph" class="inp num" name="phone" value="${esc(l.phone)}"></div>
-    <div class="field span2"><label for="lw-em">البريد</label><input id="lw-em" class="inp" type="email" name="email" value="${esc(l.email)}"></div>
+    <div class="field span2"><label for="lw-em">البريد</label><input id="lw-em" class="inp" type="email" name="email" value="${esc(l.email)}" dir="ltr">${window.RAKZ_PASSWORD ? '<span class="hint">يدخل به العضو إلى المنصة. لا يُفتح الحساب إلا لبريد مسجل هنا.</span>' : ""}</div>
     ${l.id ? `<label class="chk span2"><input type="checkbox" name="inactive" value="1" ${l.active === false ? "checked" : ""}> إيقاف العضو (لا يظهر في الإسناد)</label>${l.userId ? `<label class="chk span2"><input type="checkbox" name="unlink" value="1"> فك ربط الحساب بهذا الملف</label>` : ""}` : ""}</form>`;
 }
 A.newLawyer = () => { if (!guardWrite()) return; modal("عضو جديد", lawyerForm(), `<button class="btn primary" type="submit" form="lw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };

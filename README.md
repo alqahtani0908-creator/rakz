@@ -24,9 +24,11 @@
 1. أنشئ حسابًا ومشروعًا جديدًا على [supabase.com](https://supabase.com) (اختر منطقة قريبة، مثل Frankfurt أو Mumbai).
 2. من **SQL Editor** ← New query: الصق محتوى الملف [`supabase/schema.sql`](supabase/schema.sql) واضغط **Run**.
    ينشئ جدول البيانات، وصلاحيات الأعضاء، والتحديث الفوري، ومخزن الملفات الخاص `files`.
-3. من **Authentication ← Sign In / Providers**: أوقف خيار **Allow new users to sign up**، حتى لا يدخل إلا من تدعوهم.
 4. من **Authentication ← URL Configuration**: ضع رابط المنصة على GitHub Pages في **Site URL** (مثل `https://USERNAME.github.io/rakz/`).
-5. من **Authentication ← Users ← Invite user**: ادعُ نفسك وفريقك بالبريد. كل مدعو يدخل برابط يصله، ويمكنه لاحقًا الدخول برسالة على بريده.
+5. من **Authentication ← Sign In / Providers**: فعّل **Allow new users to sign up** وأوقف **Confirm email** (خدمة البريد المجانية في Supabase لا ترسل إلا لأعضاء فريق المشروع).
+6. الحماية: لا تُفتح البيانات إلا لبريد مسجل على عضو نشط في «فريق العمل»، فمن ينشئ حسابًا ببريد غير مضاف لا يرى شيئًا.
+
+**إضافة عضو:** أضفه في «فريق العمل» ببريده، ثم اضغط «دعوة» لترسل له الرابط عبر واتساب؛ يفتحه ويختار «إنشاء حساب» بنفس البريد.
 
 ### 2) المساعد الذكي — اختياري (مدفوع)
 

@@ -41,3 +41,30 @@ drop policy if exists "members delete files" on storage.objects;
 create policy "members read files"   on storage.objects for select to authenticated using (bucket_id = 'files');
 create policy "members upload files" on storage.objects for insert to authenticated with check (bucket_id = 'files');
 create policy "members delete files" on storage.objects for delete to authenticated using (bucket_id = 'files');
+
+-- Members only: the database opens to an email that is on an active lawyer record (فريق العمل).
+create or replace function public.is_member() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.documents d where d.collection = 'lawyers'
+    and lower(d.data->>'email') = lower(coalesce(auth.jwt()->>'email', ''))
+    and coalesce((d.data->>'active')::boolean, true));
+$$;
+revoke all on function public.is_member() from public, anon;
+grant execute on function public.is_member() to authenticated;
+drop policy if exists "members read"   on public.documents;
+drop policy if exists "members insert" on public.documents;
+drop policy if exists "members update" on public.documents;
+drop policy if exists "members delete" on public.documents;
+create policy "members read"   on public.documents for select to authenticated using (public.is_member());
+create policy "members insert" on public.documents for insert to authenticated with check (public.is_member());
+create policy "members update" on public.documents for update to authenticated using (public.is_member()) with check (public.is_member());
+create policy "members delete" on public.documents for delete to authenticated using (public.is_member());
+drop policy if exists "members read files"   on storage.objects;
+drop policy if exists "members upload files" on storage.objects;
+drop policy if exists "members delete files" on storage.objects;
+create policy "members read files"   on storage.objects for select to authenticated using (bucket_id = 'files' and public.is_member());
+create policy "members upload files" on storage.objects for insert to authenticated with check (bucket_id = 'files' and public.is_member());
+create policy "members delete files" on storage.objects for delete to authenticated using (bucket_id = 'files' and public.is_member());
+-- Bootstrap: the first manager's lawyer record must exist before anyone else can sign in.
+-- Insert it once from the SQL editor if the team list is empty, e.g.:
+-- insert into public.documents(path, collection, id, data) values ('lawyers/owner','lawyers','owner','{"name":"المدير","role":"manager","email":"you@example.com","active":true}');

@@ -225,6 +225,7 @@ function renderSide() {
       ${n("settings", "الإعدادات", "settings")}
     </nav>
     <div class="me">${S.me.avatar ? `<img src="${esc(S.me.avatar)}" alt="">` : `<span class="avatar">${esc(initials(me?.name || S.me.name))}</span>`}
+      ${window.RAKZ_PASSWORD ? `<button class="icon-btn" data-act="changePw" title="تغيير كلمة المرور" aria-label="تغيير كلمة المرور" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("settings")}</button>` : ""}
       ${window.RAKZ_SIGNOUT ? `<button class="icon-btn" data-act="signOut" title="تسجيل الخروج" aria-label="تسجيل الخروج" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("x")}</button>` : ""}
       <div class="grow"><small>تعمل باسم</small><select id="as-sel" class="inp" data-ch="asMe" style="background:var(--nav-hover);color:var(--nav-ink);border-color:transparent;padding:4px 8px" aria-label="تعمل باسم">${opt("", S.data.lawyers.length ? "— اختر اسمك —" : "أضف الفريق أولًا", me?.id || "")}${S.data.lawyers.filter((l) => l.active !== false).map((l) => opt(l.id, l.name, me?.id || "")).join("")}</select></div></div>`;
 }
@@ -295,6 +296,8 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal
 
 A.go = (el) => go(el.dataset.r);
 A.signOut = () => window.RAKZ_SIGNOUT && window.RAKZ_SIGNOUT();
+A.changePw = () => modal("تغيير كلمة المرور", `<form id="pw-form" data-form="changePw" class="stack" style="gap:12px"><div class="field"><label for="pw1">كلمة المرور الجديدة</label><input id="pw1" class="inp" type="password" name="p1" minlength="8" required autocomplete="new-password" dir="ltr"><span class="hint">8 أحرف على الأقل.</span></div><div class="field"><label for="pw2">تأكيدها</label><input id="pw2" class="inp" type="password" name="p2" required autocomplete="new-password" dir="ltr"></div></form>`, `<button class="btn primary" type="submit" form="pw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
+F.changePw = async (d) => { if (d.p1.length < 8) return toast("كلمة المرور 8 أحرف على الأقل.", true); if (d.p1 !== d.p2) return toast("كلمتا المرور غير متطابقتين.", true); try { await window.RAKZ_PASSWORD(d.p1); closeModal(); toast("تم تغيير كلمة المرور"); } catch (e) { toast("تعذّر التغيير: " + (e.message || ""), true); } };
 A.theme = () => { setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"); renderTop(); };
 CH.asMe = (el) => { S.ui.asLid = el.value; lsSet("as", el.value); render(); };
 A.menu = () => $(".side").classList.toggle("open");

@@ -17,42 +17,62 @@
   const merge = (a, b) => { const o = { ...(a || {}) }; for (const [k, v] of Object.entries(b)) o[k] = isObj(v) && isObj(o[k]) ? merge(o[k], v) : v; return o; };
   const snapDoc = (row, path) => ({ id: row ? row.id : split(path).id, exists: !!row, data: () => (row ? row.data : undefined), metadata: { fromCache: false, hasPendingWrites: false } });
 
-  /* ---------- auth gate ---------- */
+  /* ---------- auth gate ----------
+     Members create their own account (email + password, no email needed). The database only opens to
+     an email that the manager has put on an active lawyer record in «فريق العمل» (SQL: public.is_member). */
   let session = null;
+  const isMember = async () => { const { data, error } = await sb.rpc("is_member"); return !error && data === true; };
   const ready = new Promise((resolve) => {
     if (!sb) return resolve(null);
-    sb.auth.getSession().then(({ data }) => { session = data.session; if (session) resolve(session); else showLogin(resolve); });
+    const enter = async (s) => { session = s; if (await isMember()) { document.getElementById("auth-gate")?.remove(); resolve(s); } else showNotMember(resolve); };
+    sb.auth.getSession().then(({ data }) => (data.session ? enter(data.session) : showLogin(enter)));
     sb.auth.onAuthStateChange((event, s) => { session = s; if (event === "SIGNED_OUT") location.reload(); });
     window.RAKZ_SIGNOUT = () => sb.auth.signOut();
+    window.RAKZ_PASSWORD = async (pw) => { const { error } = await sb.auth.updateUser({ password: pw }); if (error) throw error; };
   });
   function shell(inner) {
+    document.getElementById("auth-gate")?.remove();
     const el = document.createElement("div"); el.id = "auth-gate"; el.dir = "rtl";
     el.style.cssText = "position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:16px;background:var(--bg);overflow:auto";
     el.innerHTML = `<div style="width:min(420px,100%);background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:28px 24px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow)">
       <div style="display:flex;justify-content:center"><img src="${typeof LOGO !== "undefined" ? LOGO.textLight : ""}" alt="ركز" style="height:52px"></div>${inner}</div>`;
     document.body.appendChild(el); return el;
   }
-  function showLogin(resolve) {
-    const el = shell(`<h2 style="margin:0;font-family:var(--f-doc);text-align:center">الدخول إلى منصة ركز</h2>
+  function showLogin(enter, mode = "in") {
+    const up = mode === "up";
+    const el = shell(`<h2 style="margin:0;font-family:var(--f-doc);text-align:center">${up ? "إنشاء حساب في منصة ركز" : "الدخول إلى منصة ركز"}</h2>
+      <div class="chips" style="justify-content:center"><span class="chip ${up ? "" : "on"}" data-m="in">دخول</span><span class="chip ${up ? "on" : ""}" data-m="up">إنشاء حساب</span></div>
       <form id="lg" style="display:flex;flex-direction:column;gap:12px">
-        <div class="field"><label for="lg-e">البريد الإلكتروني</label><input id="lg-e" class="inp" type="email" required autocomplete="email"></div>
-        <div class="field"><label for="lg-p">كلمة المرور</label><input id="lg-p" class="inp" type="password" autocomplete="current-password"><span class="hint">اتركها فارغة لتصلك رسالة دخول على بريدك.</span></div>
-        <button class="btn primary" type="submit" style="justify-content:center">دخول</button>
+        <div class="field"><label for="lg-e">البريد الإلكتروني</label><input id="lg-e" class="inp" type="email" required autocomplete="email" dir="ltr"></div>
+        <div class="field"><label for="lg-p">كلمة المرور</label><input id="lg-p" class="inp" type="password" required minlength="${up ? 8 : 1}" autocomplete="${up ? "new-password" : "current-password"}" dir="ltr">${up ? '<span class="hint">8 أحرف على الأقل.</span>' : ""}</div>
+        ${up ? '<div class="field"><label for="lg-p2">تأكيد كلمة المرور</label><input id="lg-p2" class="inp" type="password" required autocomplete="new-password" dir="ltr"></div>' : ""}
+        <button class="btn primary" type="submit" style="justify-content:center">${up ? "إنشاء الحساب" : "دخول"}</button>
         <div id="lg-msg" class="small" role="status"></div></form>
-      <p class="small muted" style="margin:0;text-align:center">الحسابات بدعوة من مدير المنصة فقط.</p>`);
+      <p class="small muted" style="margin:0;text-align:center">${up ? "استخدم البريد الذي أضافه المدير لك في «فريق العمل»." : "أول مرة؟ اختر «إنشاء حساب» بالبريد الذي أضافه المدير لك في «فريق العمل»."}</p>`);
+    el.querySelectorAll("[data-m]").forEach((c) => c.addEventListener("click", () => showLogin(enter, c.dataset.m)));
     el.querySelector("#lg").addEventListener("submit", async (e) => {
-      e.preventDefault(); const email = el.querySelector("#lg-e").value.trim(); const password = el.querySelector("#lg-p").value; const msg = el.querySelector("#lg-msg");
-      msg.textContent = "…";
-      if (password) {
-        const { data, error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) { msg.style.color = "var(--bad)"; msg.textContent = "البريد أو كلمة المرور غير صحيحة."; return; }
-        session = data.session; el.remove(); resolve(session);
-      } else {
-        const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } });
-        msg.style.color = error ? "var(--bad)" : "var(--ok)";
-        msg.textContent = error ? "هذا البريد غير مدعو إلى المنصة." : "أرسلنا رابط الدخول إلى بريدك.";
+      e.preventDefault(); const email = el.querySelector("#lg-e").value.trim().toLowerCase(); const password = el.querySelector("#lg-p").value; const msg = el.querySelector("#lg-msg");
+      const fail = (t) => { msg.style.color = "var(--bad)"; msg.textContent = t; };
+      msg.style.color = ""; msg.textContent = "…";
+      if (up) {
+        if (password.length < 8) return fail("كلمة المرور 8 أحرف على الأقل.");
+        if (password !== el.querySelector("#lg-p2").value) return fail("كلمتا المرور غير متطابقتين.");
+        const { data, error } = await sb.auth.signUp({ email, password });
+        if (error) return fail(/registered|exists/i.test(error.message) ? "لهذا البريد حساب سابق. اختر «دخول»." : "تعذّر إنشاء الحساب: " + error.message);
+        if (!data.session) return fail("أُنشئ الحساب لكنه يحتاج تفعيلًا من مدير المنصة.");
+        return enter(data.session);
       }
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) return fail("البريد أو كلمة المرور غير صحيحة. إن لم يكن لك حساب بعد فاختر «إنشاء حساب».");
+      enter(data.session);
     });
+  }
+  function showNotMember(resolve) {
+    const el = shell(`<h2 style="margin:0;font-family:var(--f-doc);text-align:center">حسابك بانتظار الإضافة</h2>
+      <p style="margin:0">بريدك <b dir="ltr">${(session?.user?.email || "").replace(/[<>&"]/g, "")}</b> غير مضاف إلى «فريق العمل». اطلب من مدير المنصة إضافته في ملفك داخل المنصة، ثم اضغط «تحقق مرة أخرى».</p>
+      <div class="row" style="justify-content:center"><button class="btn primary" id="nm-retry">تحقق مرة أخرى</button><button class="btn ghost" id="nm-out">تسجيل الخروج</button></div>`);
+    el.querySelector("#nm-out").addEventListener("click", () => sb.auth.signOut());
+    el.querySelector("#nm-retry").addEventListener("click", async () => { if (await isMember()) { el.remove(); resolve(session); } });
   }
   function showSetup() {
     shell(`<h2 style="margin:0;font-family:var(--f-doc);text-align:center">المنصة بحاجة إلى ربط قاعدة البيانات</h2>
