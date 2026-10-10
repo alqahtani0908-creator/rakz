@@ -1,0 +1,5 @@
+.DS_Store
+*.docx
+rakz.html
+__pycache__/
+.env
