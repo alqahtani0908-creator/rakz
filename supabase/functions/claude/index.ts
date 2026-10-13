@@ -55,7 +55,9 @@ Deno.serve(async (req) => {
       const send = (o: unknown) => controller.enqueue(enc.encode(JSON.stringify(o) + "\n"));
       try {
         if (!Deno.env.get("ANTHROPIC_API_KEY")) { send({ error: "not_configured" }); return; }
-        const client = new Anthropic(); // reads ANTHROPIC_API_KEY from the function's secrets
+        // Reads ANTHROPIC_API_KEY. An organization-level key must also name a workspace (secret ANTHROPIC_WORKSPACE_ID).
+        const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
+        const client = new Anthropic(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {});
         const s = client.beta.messages.stream(
           {
             model: MODEL,
@@ -79,7 +81,7 @@ Deno.serve(async (req) => {
         if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) send({ error: "not_configured" });
         else if (e instanceof Anthropic.RateLimitError) send({ error: "rate_limited" });
         else if (e instanceof Anthropic.APIUserAbortError) send({ error: "cancelled" });
-        else if (e instanceof Anthropic.BadRequestError) { console.error(e.message); send({ error: "invalid_request" }); }
+        else if (e instanceof Anthropic.BadRequestError) { console.error(e.message); send({ error: /workspace/i.test(e.message) ? "workspace_key" : /credit|balance|billing/i.test(e.message) ? "no_credit" : "invalid_request" }); }
         else { console.error(e); send({ error: "upstream_error" }); }
       } finally {
         controller.close();
