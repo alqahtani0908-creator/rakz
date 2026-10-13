@@ -35,7 +35,7 @@ const ROLES = { manager: "مدير", partner: "شريك", lawyer: "محامٍ", 
 
 const S = {
   caps: {}, me: { id: null, name: "", avatar: "", isOwner: false, canEdit: false, canWrite: null },
-  data: { lawyers: [], clients: [], cases: [], tasks: [], docs: [], consults: [], finance: [] }, loaded: {},
+  data: { lawyers: [], clients: [], cases: [], tasks: [], docs: [], consults: [], finance: [], fees: [], journal: [] }, loaded: {},
   firm: { ...FIRM_DEFAULTS }, templates: {},
   route: { name: "dashboard", id: null, tab: null },
   caseSub: null, caseLog: [], caseFiles: [], caseReports: [], caseLoadedFor: null,
@@ -133,11 +133,11 @@ const IC = {
 const icon = (n, cls) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"${cls ? ` class="${cls}"` : ""} aria-hidden="true">${IC[n] || ""}</svg>`;
 
 /* ---------- data layer ---------- */
-const COLL = ["lawyers", "clients", "cases", "tasks", "docs", "consults", "finance"];
+const COLL = ["lawyers", "clients", "cases", "tasks", "docs", "consults", "finance", "fees", "journal"];
 function canWrite() { return !!S.caps.db && S.me.canWrite !== false; }
 function guardWrite() { if (!S.caps.db) { toast("قاعدة البيانات غير متاحة في هذا العرض. افتح المنصة من حسابك في Claude.", true); return false; } return true; }
 function dbErr(e) { console.error(e); const c = e?.code;
-  if (c === "forbidden") { toast(/finance/.test(e.message || "") ? "الشؤون المالية من صلاحية المدير." : "هذا الإجراء من صلاحية المدير.", true); throw e; } if (c === "invalid_argument") toast("رفضت المنصة الحفظ. تأكد أن الرابط مشارك معك بصلاحية تسمح بالتعديل.", true); else if (c === "quota_exceeded") toast("امتلأت سعة قاعدة البيانات. احذف سجلات قديمة أو انقل الأرشيف.", true); else toast("تعذّر الحفظ. حاول مرة أخرى بعد لحظات.", true); throw e; }
+  if (c === "forbidden") { const m = e.message || ""; toast(/journal_unbalanced/.test(m) ? "القيد غير متوازن: مجموع المدين يجب أن يساوي مجموع الدائن." : /journal_immutable/.test(m) ? "القيود المرحّلة لا تُعدَّل ولا تُحذف؛ صحّحها بقيد تسوية." : /finance/.test(m) ? "الشؤون المالية من صلاحية المدير." : "هذا الإجراء من صلاحية المدير.", true); throw e; } if (c === "invalid_argument") toast("رفضت المنصة الحفظ. تأكد أن الرابط مشارك معك بصلاحية تسمح بالتعديل.", true); else if (c === "quota_exceeded") toast("امتلأت سعة قاعدة البيانات. احذف سجلات قديمة أو انقل الأرشيف.", true); else toast("تعذّر الحفظ. حاول مرة أخرى بعد لحظات.", true); throw e; }
 function clean(o) { return JSON.parse(JSON.stringify(o)); }
 async function add(coll, data) { if (!guardWrite()) throw new Error("ro"); const ref = S.caps.db.collection(coll).doc(); try { await ref.set(clean({ ...data, createdAt: nowIso(), createdBy: myLid() || S.me.id })); } catch (e) { dbErr(e); } return ref.id; }
 async function put(path, data) { if (!guardWrite()) throw new Error("ro"); try { await S.caps.db.doc(path).set(clean(data)); } catch (e) { dbErr(e); } }
@@ -227,7 +227,7 @@ function renderSide() {
       ${n("drafting", "العقود واللوائح والعروض", "docs")}
       ${window.RAKZ_LAWS ? n("laws", "المكتبة النظامية", "scale") : ""}
       <div class="nav-sec">الإدارة</div>
-      ${isManager() ? n("finance", "المالية", "coin") : ""}
+      ${isManager() ? n("finance", "المالية", "coin", S.data.fees.filter((f) => f.status === "pending").length || "") : ""}
       ${n("clients", "العملاء", "clients")}
       ${n("team", "فريق العمل", "team")}
       ${n("settings", "الإعدادات", "settings")}

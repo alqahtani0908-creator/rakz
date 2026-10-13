@@ -93,7 +93,7 @@
     const ref = {
       id, path,
       async get() { return snapDoc(await getDoc(path), path); },
-      async set(data) { const { error } = await T().upsert({ path, collection, id, data, updated_at: new Date().toISOString() }); if (error) throw err(/requires_manager/.test(error.message) ? "forbidden" : /row-level|permission/i.test(error.message) ? "invalid_argument" : "unavailable", error.message); },
+      async set(data) { const { error } = await T().upsert({ path, collection, id, data, updated_at: new Date().toISOString() }); if (error) throw err(/requires_manager|journal_/.test(error.message) ? "forbidden" : /row-level|permission/i.test(error.message) ? "invalid_argument" : "unavailable", error.message); },
       async update(patch) { const cur = await getDoc(path); if (!cur) throw err("invalid_argument", "document does not exist"); return ref.set(merge(cur.data, patch)); },
       async delete() { const { error } = await T().delete().eq("path", path); if (error) throw err("unavailable", error.message); },
       onSnapshot(next, onErr) {

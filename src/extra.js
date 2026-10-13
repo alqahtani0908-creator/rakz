@@ -157,8 +157,8 @@ VIEWS.finance = () => {
     <div class="kpi"><span class="lbl">المحصّل</span><span class="val" style="color:var(--ok)">${money(t.collected)}</span><span class="foot">من ${money(t.invoiced)} مفوتر</span></div>
     <div class="kpi attn"><span class="lbl">المستحق على العملاء</span><span class="val">${money(t.outstanding)}</span><span class="foot">مطالبات لم تُسدد</span></div>
     <div class="kpi ${t.late ? "alert" : ""}"><span class="lbl">متأخر السداد</span><span class="val">${money(t.late)}</span><span class="foot">المصروفات ${money(t.expenses)}</span></div></div>
-  <div class="tabs">${[["invoices", "المطالبات", invs.length], ["payments", "المدفوعات", fin("payment").length], ["expenses", "المصروفات", fin("expense").length], ["receivables", "ذمم العملاء"]].map(([k, l, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${l}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>
-  ${tab === "invoices" ? invTable(invs) || `<div class="card">${emptyBox("receipt", "لا مطالبات بعد", "أنشئ مطالبة بأتعاب قضية أو استشارة، ثم سجّل دفعاتها.", `<button class="btn gold" data-act="newInvoice">${icon("receipt")}مطالبة جديدة</button>`)}</div>`
+  <div class="tabs">${[["invoices", "المطالبات", invs.length], ["payments", "المدفوعات", fin("payment").length], ["expenses", "المصروفات", fin("expense").length], ["receivables", "ذمم العملاء"], ["fees", "طلبات الأتعاب", S.data.fees.filter((f) => f.status === "pending").length], ["journal", "القيود", (S.data.journal || []).length], ["trial", "ميزان المراجعة"], ["statement", "كشف حساب عميل"]].map(([k, l, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${l}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>
+  ${FIN_TABS[tab] ? FIN_TABS[tab]() : tab === "invoices" ? invTable(invs) || `<div class="card">${emptyBox("receipt", "لا مطالبات بعد", "أنشئ مطالبة بأتعاب قضية أو استشارة، ثم سجّل دفعاتها.", `<button class="btn gold" data-act="newInvoice">${icon("receipt")}مطالبة جديدة</button>`)}</div>`
   : tab === "payments" ? payTable([...fin("payment")].sort((a, b) => (b.date || "").localeCompare(a.date || ""))) || `<div class="card">${emptyBox("coin", "لا مدفوعات مسجلة", "")}</div>`
   : tab === "expenses" ? expTable([...fin("expense")].sort((a, b) => (b.date || "").localeCompare(a.date || ""))) || `<div class="card">${emptyBox("coin", "لا مصروفات مسجلة", "")}</div>`
   : recv.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>العميل</th><th>المفوتر</th><th>المحصّل</th><th>المستحق</th><th>المتأخر</th></tr></thead><tbody>${recv.map(([cl, v]) => `<tr data-act="clientCases" data-id="${cl.id}"><td class="primary-cell"><div class="t">${esc(cl.name)}</div></td><td data-label="المفوتر" class="num">${money(v.invoiced)}</td><td data-label="المحصّل" class="num">${money(v.collected)}</td><td data-label="المستحق" class="num"><b>${money(v.outstanding)}</b></td><td data-label="المتأخر" class="num" style="color:${v.late ? "var(--bad)" : "inherit"}">${money(v.late)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="card">${emptyBox("clients", "لا ذمم بعد", "")}</div>`}`;
@@ -193,8 +193,10 @@ A.newInvoice = (el) => { if (!guardWrite()) return; if (!isManager()) return toa
 F.saveInvoice = async (d) => {
   const amount = num(d.amount); const vat = Number(d.vat) || 0; const total = Math.round(amount * (1 + vat / 100) * 100) / 100;
   const data = { type: "invoice", clientId: d.clientId, caseId: d.caseId, consultId: d.consultId, desc: d.desc, amount, vat: d.vat, vatAmount: total - amount, total, date: d.date, due: d.due, note: d.note };
-  if (d.id) { data.status = d.void === "1" ? "void" : "active"; await upd(`finance/${d.id}`, data); }
-  else { data.no = finNo("invoice"); data.status = "active"; await add("finance", data); if (d.caseId) await logCase(d.caseId, "note", `صدرت مطالبة مالية ${data.no} بمبلغ ${money(total)} ر.س`); }
+  let id = d.id;
+  if (d.id) { data.status = d.void === "1" ? "void" : "active"; data.no = byId(S.data.finance, d.id)?.no; await upd(`finance/${d.id}`, data); }
+  else { data.no = finNo("invoice"); data.status = "active"; id = await add("finance", data); if (d.caseId) await logCase(d.caseId, "note", `صدرت مطالبة مالية ${data.no} بمبلغ ${money(total)} ر.س`); }
+  await syncJournal("invoice", id, data, `مطالبة ${data.no || ""} — ${clientName(data.clientId)}: ${data.desc}`);
   closeModal(); toast("حُفظت المطالبة");
 };
 function paymentForm(x = {}) {
@@ -213,9 +215,11 @@ A.newPayment = (el) => { if (!guardWrite()) return; if (!isManager()) return toa
 F.savePayment = async (d) => {
   const inv = byId(S.data.finance, d.invoiceId);
   const data = { type: "payment", invoiceId: d.invoiceId, clientId: d.clientId || inv?.clientId || "", caseId: d.caseId || inv?.caseId || "", amount: num(d.amount), date: d.date, method: d.method, ref: d.ref };
-  if (d.id && d.remove === "1") await del(`finance/${d.id}`);
+  let id = d.id; const gone = d.id && d.remove === "1";
+  if (gone) await del(`finance/${d.id}`);
   else if (d.id) await upd(`finance/${d.id}`, data);
-  else { data.no = finNo("payment"); await add("finance", data); if (data.caseId) await logCase(data.caseId, "note", `استُلمت دفعة ${money(data.amount)} ر.س (${d.method})`); }
+  else { data.no = finNo("payment"); id = await add("finance", data); if (data.caseId) await logCase(data.caseId, "note", `استُلمت دفعة ${money(data.amount)} ر.س (${d.method})`); }
+  await syncJournal("payment", id, gone ? null : data, `دفعة من ${clientName(data.clientId)}${data.ref ? " — " + data.ref : ""}`);
   closeModal(); toast("حُفظت الدفعة");
 };
 function expenseForm(x = {}) {
@@ -231,9 +235,11 @@ function expenseForm(x = {}) {
 A.newExpense = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); modal("مصروف", expenseForm({ caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.saveExpense = async (d) => {
   const data = { type: "expense", caseId: d.caseId, clientId: caseById(d.caseId)?.clientId || "", category: d.category, amount: num(d.amount), date: d.date, desc: d.desc, billable: d.billable === "1" };
-  if (d.id && d.remove === "1") await del(`finance/${d.id}`);
+  let id = d.id; const gone = d.id && d.remove === "1";
+  if (gone) await del(`finance/${d.id}`);
   else if (d.id) await upd(`finance/${d.id}`, data);
-  else { await add("finance", data); if (d.caseId) await logCase(d.caseId, "note", `صُرف ${money(data.amount)} ر.س: ${d.category}${d.desc ? " — " + d.desc : ""}`); }
+  else { id = await add("finance", data); if (d.caseId) await logCase(d.caseId, "note", `صُرف ${money(data.amount)} ر.س: ${d.category}${d.desc ? " — " + d.desc : ""}`); }
+  await syncJournal("expense", id, gone ? null : data, `مصروف ${data.category}${data.desc ? " — " + data.desc : ""}`);
   closeModal(); toast("حُفظ المصروف");
 };
 A.editFin = (el) => {
@@ -331,7 +337,7 @@ VIEWS.consult = () => {
       <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" data-live="csLive" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
       <div class="row" style="margin-top:10px"><button class="btn primary" data-act="saveAnswer" data-id="${x.id}">${icon("check")}حفظ</button><button class="btn" data-act="opinionDoc" data-id="${x.id}">${icon("docs")}مستند Word بترويسة المكتب</button>
         <a id="cs-wa" class="btn" href="${esc(waHref(phone, ans))}" target="_blank" rel="noopener">${icon("wa")}إرسال واتساب</a></div></div></div>
-    <div class="stack"><div class="card"><div class="card-h"><h3>السؤال والوقائع</h3></div><div class="prose">${esc(x.question || "")}</div></div>
+    <div class="stack">${feeCard("consultId", x)}<div class="card"><div class="card-h"><h3>السؤال والوقائع</h3></div><div class="prose">${esc(x.question || "")}</div></div>
       <div class="card"><div class="card-h"><h3>إجراءات</h3></div><div class="stack" style="gap:8px">
         ${x.caseId ? `<button class="btn" data-act="openCase" data-id="${x.caseId}">${icon("cases")}فتح القضية المرتبطة</button>` : `<button class="btn" data-act="consultToCase" data-id="${x.id}">${icon("cases")}تحويل إلى قضية</button>`}
         ${isManager() ? `<button class="btn" data-act="newInvoice" data-consult="${x.id}">${icon("receipt")}مطالبة بالأتعاب</button>` : ""}
