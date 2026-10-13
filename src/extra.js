@@ -145,6 +145,7 @@ const payTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tb
 const expTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>المصروف</th><th>القضية</th><th>المبلغ</th><th>على العميل</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t">${esc(x.category || "")}${x.desc ? " — " + esc(x.desc) : ""}</div><div class="ref">${fmtDate(x.date)}</div></td><td data-label="القضية">${esc(caseById(x.caseId)?.title || "—")}</td><td data-label="المبلغ" class="num">${money(x.amount)}</td><td data-label="على العميل">${x.billable ? pill("نعم", "gold") : pill("لا", "plain")}</td><td data-noact="1"><button class="btn sm ghost" data-act="editFin" data-id="${x.id}">${icon("edit")}</button></td></tr>`).join("")}</tbody></table></div>` : "";
 
 VIEWS.finance = () => {
+  if (!isManager()) return `<div class="card">${emptyBox("coin", "المالية من صلاحية المدير", "يطّلع على المطالبات والمدفوعات والمصروفات من صفته «مدير» فقط.")}</div>`;
   const tab = S.route.tab || "invoices"; const t = finTotals();
   const agreed = S.data.cases.filter((c) => c.status !== "closed").reduce((s, c) => s + num(c.fee), 0) + S.data.consults.filter((c) => c.status !== "done").reduce((s, c) => s + num(c.fee), 0);
   const invs = [...fin("invoice")].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -188,7 +189,7 @@ function invoiceForm(x = {}) {
     <div class="field span2"><label for="iv-note">ملاحظات</label><input id="iv-note" class="inp" name="note" value="${esc(x.note)}"></div>
     ${x.id ? `<label class="chk span2"><input type="checkbox" name="void" value="1" ${x.status === "void" ? "checked" : ""}> إلغاء المطالبة</label>` : ""}</form>`;
 }
-A.newInvoice = (el) => { if (!guardWrite()) return; modal("مطالبة مالية جديدة", invoiceForm({ caseId: el.dataset.case || "", consultId: el.dataset.consult || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.newInvoice = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); modal("مطالبة مالية جديدة", invoiceForm({ caseId: el.dataset.case || "", consultId: el.dataset.consult || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.saveInvoice = async (d) => {
   const amount = num(d.amount); const vat = Number(d.vat) || 0; const total = Math.round(amount * (1 + vat / 100) * 100) / 100;
   const data = { type: "invoice", clientId: d.clientId, caseId: d.caseId, consultId: d.consultId, desc: d.desc, amount, vat: d.vat, vatAmount: total - amount, total, date: d.date, due: d.due, note: d.note };
@@ -208,7 +209,7 @@ function paymentForm(x = {}) {
     <div class="field"><label for="pm-ref">المرجع</label><input id="pm-ref" class="inp" name="ref" value="${esc(x.ref)}" placeholder="رقم الحوالة أو الشيك"></div>
     ${x.id ? `<label class="chk span2"><input type="checkbox" name="remove" value="1"> حذف هذه الدفعة</label>` : ""}</form>`;
 }
-A.newPayment = (el) => { if (!guardWrite()) return; modal("تسجيل دفعة", paymentForm({ invoiceId: el.dataset.inv || "", caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.newPayment = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); modal("تسجيل دفعة", paymentForm({ invoiceId: el.dataset.inv || "", caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.savePayment = async (d) => {
   const inv = byId(S.data.finance, d.invoiceId);
   const data = { type: "payment", invoiceId: d.invoiceId, clientId: d.clientId || inv?.clientId || "", caseId: d.caseId || inv?.caseId || "", amount: num(d.amount), date: d.date, method: d.method, ref: d.ref };
@@ -227,7 +228,7 @@ function expenseForm(x = {}) {
     <label class="chk span2"><input type="checkbox" name="billable" value="1" ${x.billable !== false ? "checked" : ""}> يُحمَّل على العميل</label>
     ${x.id ? `<label class="chk span2"><input type="checkbox" name="remove" value="1"> حذف هذا المصروف</label>` : ""}</form>`;
 }
-A.newExpense = (el) => { if (!guardWrite()) return; modal("مصروف", expenseForm({ caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.newExpense = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); modal("مصروف", expenseForm({ caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.saveExpense = async (d) => {
   const data = { type: "expense", caseId: d.caseId, clientId: caseById(d.caseId)?.clientId || "", category: d.category, amount: num(d.amount), date: d.date, desc: d.desc, billable: d.billable === "1" };
   if (d.id && d.remove === "1") await del(`finance/${d.id}`);
@@ -298,7 +299,7 @@ function consultForm(x = {}) {
     <div class="field span2"><label for="cs-sub">الموضوع</label><input id="cs-sub" class="inp" name="subject" required value="${esc(x.subject)}" placeholder="مثال: مدى نظامية فصل موظف خلال فترة التجربة"></div>
     <div class="field"><label for="cs-field">المجال</label><select id="cs-field" class="inp" name="field">${CASE_TYPES.map((t) => opt(t, t, x.field)).join("")}</select></div>
     <div class="field"><label for="cs-due">موعد التسليم</label><input id="cs-due" class="inp" type="date" name="due" value="${esc(x.due || ymd(new Date(Date.now() + 3 * 864e5)))}"></div>
-    <div class="field"><label for="cs-fee">الأتعاب (ر.س)</label><input id="cs-fee" class="inp num" name="fee" inputmode="decimal" value="${esc(x.fee)}"></div>
+    ${isManager() ? `<div class="field"><label for="cs-fee">الأتعاب (ر.س)</label><input id="cs-fee" class="inp num" name="fee" inputmode="decimal" value="${esc(x.fee)}"></div>` : ""}
     ${isManager() ? `<div class="field"><label for="cs-law">المستشار المسؤول</label><select id="cs-law" class="inp" name="lawyerId">${lawyerOpts(x.lawyerId, "— لاحقًا —")}</select></div>` : `<div class="field"><span class="hint">يسند المدير الاستشارة إلى المستشار المناسب.</span></div>`}
     <div class="field span2"><label for="cs-q">سؤال العميل ووقائعه</label><textarea id="cs-q" class="inp" name="question" rows="6" required>${esc(x.question)}</textarea></div></form>`;
 }
@@ -307,7 +308,7 @@ A.editConsult = (el) => modal("تعديل الاستشارة", consultForm(byId(
 F.saveConsult = async (d) => {
   let clientId = d.clientId;
   if (!clientId && d.prospect.trim()) clientId = await add("clients", { name: d.prospect.trim(), phone: d.phone, kind: "individual" });
-  const data = { clientId: clientId || "", prospect: d.prospect, phone: d.phone, type: d.type, subject: d.subject.trim(), field: d.field, due: d.due, fee: num(d.fee) || "", question: d.question };
+  const data = { clientId: clientId || "", prospect: d.prospect, phone: d.phone, type: d.type, subject: d.subject.trim(), field: d.field, due: d.due, fee: isManager() ? num(d.fee) || "" : (byId(S.data.consults, d.id)?.fee ?? ""), question: d.question };
   if (isManager() && d.lawyerId !== undefined) data.lawyerId = d.lawyerId;
   if (d.id) { await upd(`consults/${d.id}`, data); closeModal(); toast("حُفظت"); return; }
   const no = `RK-Q-${new Date().getFullYear()}-${String(S.data.consults.length + 1).padStart(3, "0")}`;
@@ -324,7 +325,7 @@ VIEWS.consult = () => {
   <div class="case-head"><div class="row" style="align-items:flex-start"><div class="grow"><h1>${esc(x.subject)}</h1><div class="row small muted" style="margin-top:4px">${pill(CONSULT_STATUS[x.status]?.t, CONSULT_STATUS[x.status]?.c)}<span>${esc(x.type || "")}</span><span>${esc(x.field || "")}</span>${x.due ? `<span>التسليم ${fmtDate(x.due)}</span>${x.status !== "done" ? countdown(x.due) : ""}` : ""}</div></div>
     <div class="row"><button class="btn" data-act="editConsult" data-id="${x.id}">${icon("edit")}تعديل</button><select class="inp" style="width:auto" data-ch="consultStatus" data-id="${x.id}" aria-label="الحالة">${Object.entries(CONSULT_STATUS).map(([k, v]) => opt(k, v.t, x.status)).join("")}</select></div></div>
     <div class="facts"><div class="fact"><div class="k">العميل</div><div class="v">${esc(x.clientId ? clientName(x.clientId) : x.prospect || "—")}</div></div><div class="fact"><div class="k">الجوال</div><div class="v num">${esc(phone || "—")}</div></div>
-      <div class="fact"><div class="k">المستشار</div><div class="v">${x.lawyerId ? esc(lawyerName(x.lawyerId)) : isManager() ? `<a data-act="editConsult" data-id="${x.id}" style="cursor:pointer">إسناد</a>` : "بانتظار إسناد المدير"}</div></div><div class="fact"><div class="k">الأتعاب</div><div class="v num">${x.fee ? money(x.fee) + " ر.س" : "—"}</div></div></div></div>
+      <div class="fact"><div class="k">المستشار</div><div class="v">${x.lawyerId ? esc(lawyerName(x.lawyerId)) : isManager() ? `<a data-act="editConsult" data-id="${x.id}" style="cursor:pointer">إسناد</a>` : "بانتظار إسناد المدير"}</div></div>${isManager() ? `<div class="fact"><div class="k">الأتعاب</div><div class="v num">${x.fee ? money(x.fee) + " ر.س" : "—"}</div></div>` : ""}</div></div>
   <div class="cols"><div class="stack">
     <div class="card"><div class="card-h"><h3>الرأي القانوني</h3><div class="row">${gen ? `<span class="thinking small">يكتب المساعد…</span><button class="btn sm" data-act="stopGen">إيقاف</button>` : S.caps.sample ? `<button class="btn sm gold" data-act="genOpinion" data-id="${x.id}">${icon("spark")}${ans ? "إعادة الصياغة" : "صياغة المسودة"}</button>` : ans ? "" : `<button class="btn sm gold" data-act="opinionTemplate" data-id="${x.id}">${icon("docs")}أدرج هيكل الرأي</button>`}</div></div>
       <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" data-live="csLive" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
@@ -333,7 +334,7 @@ VIEWS.consult = () => {
     <div class="stack"><div class="card"><div class="card-h"><h3>السؤال والوقائع</h3></div><div class="prose">${esc(x.question || "")}</div></div>
       <div class="card"><div class="card-h"><h3>إجراءات</h3></div><div class="stack" style="gap:8px">
         ${x.caseId ? `<button class="btn" data-act="openCase" data-id="${x.caseId}">${icon("cases")}فتح القضية المرتبطة</button>` : `<button class="btn" data-act="consultToCase" data-id="${x.id}">${icon("cases")}تحويل إلى قضية</button>`}
-        <button class="btn" data-act="newInvoice" data-consult="${x.id}">${icon("receipt")}مطالبة بالأتعاب</button>
+        ${isManager() ? `<button class="btn" data-act="newInvoice" data-consult="${x.id}">${icon("receipt")}مطالبة بالأتعاب</button>` : ""}
         <button class="btn danger" data-act="deleteConsult" data-id="${x.id}">${icon("trash")}حذف</button></div></div></div></div>`;
 };
 CH.csLive = () => { const a = $("#cs-wa"); const x = byId(S.data.consults, S.route.id); if (a && x) a.href = waHref(x.phone || byId(S.data.clients, x.clientId)?.phone, $("#cs-answer").value); };

@@ -272,13 +272,14 @@ VIEWS.drafting = () => {
   const tab = S.route.tab || "home";
   const docs = [...S.data.docs].sort((a, b) => (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || ""));
   const head = `<div class="page-head"><div><h1>الصياغة</h1><p>عقود من النموذج الأساسي، عروض أتعاب، ولوائح وردود ${S.caps.sample ? "يكتبها المساعد من ملف القضية" : "بهياكلها النظامية"}.</p></div></div>
-    <div class="tabs">${[["home", "إنشاء"], ["pleading", "اللوائح والردود"], ["contract", "العقود"], ["proposal", "عروض الأتعاب"], ["all", "كل المستندات", docs.length]].map(([k, t, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${t}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>`;
+    <div class="tabs">${[["home", "إنشاء"], ["pleading", "اللوائح والردود"], ...(isManager() ? [["contract", "العقود"], ["proposal", "عروض الأتعاب"]] : []), ["all", "كل المستندات", docs.length]].map(([k, t, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${t}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>`;
   if (tab === "home") return head + `<div class="gen-grid">
       <button class="card gen" data-act="tab" data-tab="pleading"><span class="ic">${icon("scale")}</span><b>لائحة أو رد</b><span>صحيفة دعوى، مذكرة جوابية، استئناف، نقض، التماس… ${S.caps.sample ? "يكتبها المساعد من وقائع القضية ومرفقاتها." : "بهيكلها النظامي وبيانات القضية جاهزة للتعبئة."}</span></button>
-      <button class="card gen" data-act="tab" data-tab="contract"><span class="ic">${icon("contract")}</span><b>عقد خدمات قانونية</b><span>من النموذج الأساسي للمكتب، تُملأ بياناته تلقائيًا من العميل والقضية.</span></button>
-      <button class="card gen" data-act="tab" data-tab="proposal"><span class="ic">${icon("coin")}</span><b>عرض أتعاب</b><span>بنود الخدمات والمبالغ والضريبة وشروط السداد بترويسة المكتب.</span></button></div>
+      ${isManager() ? `<button class="card gen" data-act="tab" data-tab="contract"><span class="ic">${icon("contract")}</span><b>عقد خدمات قانونية</b><span>من النموذج الأساسي للمكتب، تُملأ بياناته تلقائيًا من العميل والقضية.</span></button>` : ""}
+      ${isManager() ? `<button class="card gen" data-act="tab" data-tab="proposal"><span class="ic">${icon("coin")}</span><b>عرض أتعاب</b><span>بنود الخدمات والمبالغ والضريبة وشروط السداد بترويسة المكتب.</span></button>` : ""}</div>
     <div class="card"><div class="card-h"><h3>آخر المستندات</h3></div>${docs.length ? `<div class="list">${docs.slice(0, 8).map(docRow).join("")}</div>` : emptyBox("docs", "لم تُنشأ مستندات بعد", "")}</div>`;
   if (tab === "all") return head + `<div class="card">${docs.length ? `<div class="list">${docs.map(docRow).join("")}</div>` : emptyBox("docs", "لا مستندات", "")}</div>`;
+  if ((tab === "contract" || tab === "proposal") && !isManager()) return head + `<div class="card">${emptyBox("coin", "العقود وعروض الأتعاب من صلاحية المدير", "")}</div>`;
   return head + GEN_FORMS[tab]();
 };
 const dv = (k, d = "") => S.drafts[k] ?? d;

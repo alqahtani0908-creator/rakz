@@ -4,7 +4,6 @@ const _render = render;
 render = function () { _render(); bindDrop(); };
 
 async function boot() {
-  S.ui.asLid = lsGet("as", "");
   setTheme(lsGet("theme", "light"));
   const h = (location.hash || "").replace("#", "");
   if (VIEWS[h] && !["case", "doc"].includes(h)) S.route.name = h;
@@ -14,7 +13,7 @@ async function boot() {
   S.caps = { db, user, sample, assets, downloads };
   if (user) {
     const me = await user.me();
-    S.me = { id: me.id, name: me.name || "", avatar: me.avatarUrl, isOwner: me.isOwner, canEdit: me.canEdit, canWrite: await user.can("data.write") };
+    S.me = { id: me.id, name: me.name || "", email: me.email || "", avatar: me.avatarUrl, isOwner: me.isOwner, canEdit: me.canEdit, canWrite: await user.can("data.write") };
   }
   S.booted = true;
   if (db) subscribeAll(); else COLL.forEach((c) => (S.loaded[c] = true));

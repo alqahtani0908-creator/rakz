@@ -39,7 +39,7 @@ const S = {
   firm: { ...FIRM_DEFAULTS }, templates: {},
   route: { name: "dashboard", id: null, tab: null },
   caseSub: null, caseLog: [], caseFiles: [], caseReports: [], caseLoadedFor: null,
-  ui: { asLid: "", caseFilter: { q: "", status: "", type: "", lawyer: "", mine: false }, taskFilter: { mine: true, kind: "", done: false }, selected: new Set(), openFile: null, notifOpen: false },
+  ui: { caseFilter: { q: "", status: "", type: "", lawyer: "", mine: false }, taskFilter: { mine: true, kind: "", done: false }, selected: new Set(), openFile: null, notifOpen: false },
   gen: null, // in-flight AI generation {docId, text, ctl}
   drafts: {}, // per-form values that survive re-render
 };
@@ -72,10 +72,16 @@ const byId = (arr, id) => arr.find((x) => x.id === id);
 const lawyerName = (id) => byId(S.data.lawyers, id)?.name || "غير مسند";
 const clientName = (id) => byId(S.data.clients, id)?.name || "—";
 const caseById = (id) => byId(S.data.cases, id);
-const myLawyer = () => (S.me.id && S.data.lawyers.find((l) => l.userId === S.me.id)) || S.data.lawyers.find((l) => l.id === S.ui.asLid) || null;
+/* Identity is the signed-in account: its email (standalone) or the Claude user id it was linked to (Claude version).
+   Nobody can act as another member. */
+const myLawyer = () => {
+  const em = (S.me.email || "").toLowerCase();
+  return (em && S.data.lawyers.find((l) => l.active !== false && (l.email || "").toLowerCase() === em)) || (S.me.id && S.data.lawyers.find((l) => l.userId === S.me.id)) || null;
+};
 const myLid = () => myLawyer()?.id || null;
 /* Assignment is reserved for managers (role مدير/شريك); the artifact owner counts as manager until a profile is chosen. */
-const isManager = () => { const m = myLawyer(); return m ? ["manager", "partner"].includes(m.role) : !!S.me.isOwner || !S.data.lawyers.some((l) => ["manager", "partner"].includes(l.role)); };
+/* Only role «مدير» assigns work, handles finance, manages the team and settings (enforced again by the database). */
+const isManager = () => { const m = myLawyer(); return m ? m.role === "manager" : !!S.me.isOwner && !S.data.lawyers.some((l) => l.role === "manager"); };
 const pill = (t, c) => `<span class="pill ${c || ""}">${esc(t)}</span>`;
 const statusPill = (s) => pill(STATUSES[s]?.t || "—", STATUSES[s]?.c);
 const kindPill = (k) => pill(TASK_KINDS[k]?.t || "مهمة", TASK_KINDS[k]?.c);
@@ -130,7 +136,8 @@ const icon = (n, cls) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 const COLL = ["lawyers", "clients", "cases", "tasks", "docs", "consults", "finance"];
 function canWrite() { return !!S.caps.db && S.me.canWrite !== false; }
 function guardWrite() { if (!S.caps.db) { toast("قاعدة البيانات غير متاحة في هذا العرض. افتح المنصة من حسابك في Claude.", true); return false; } return true; }
-function dbErr(e) { console.error(e); const c = e?.code; if (c === "invalid_argument") toast("رفضت المنصة الحفظ. تأكد أن الرابط مشارك معك بصلاحية تسمح بالتعديل.", true); else if (c === "quota_exceeded") toast("امتلأت سعة قاعدة البيانات. احذف سجلات قديمة أو انقل الأرشيف.", true); else toast("تعذّر الحفظ. حاول مرة أخرى بعد لحظات.", true); throw e; }
+function dbErr(e) { console.error(e); const c = e?.code;
+  if (c === "forbidden") { toast(/finance/.test(e.message || "") ? "الشؤون المالية من صلاحية المدير." : "هذا الإجراء من صلاحية المدير.", true); throw e; } if (c === "invalid_argument") toast("رفضت المنصة الحفظ. تأكد أن الرابط مشارك معك بصلاحية تسمح بالتعديل.", true); else if (c === "quota_exceeded") toast("امتلأت سعة قاعدة البيانات. احذف سجلات قديمة أو انقل الأرشيف.", true); else toast("تعذّر الحفظ. حاول مرة أخرى بعد لحظات.", true); throw e; }
 function clean(o) { return JSON.parse(JSON.stringify(o)); }
 async function add(coll, data) { if (!guardWrite()) throw new Error("ro"); const ref = S.caps.db.collection(coll).doc(); try { await ref.set(clean({ ...data, createdAt: nowIso(), createdBy: myLid() || S.me.id })); } catch (e) { dbErr(e); } return ref.id; }
 async function put(path, data) { if (!guardWrite()) throw new Error("ro"); try { await S.caps.db.doc(path).set(clean(data)); } catch (e) { dbErr(e); } }
@@ -220,7 +227,7 @@ function renderSide() {
       ${n("drafting", "العقود واللوائح والعروض", "docs")}
       ${window.RAKZ_LAWS ? n("laws", "المكتبة النظامية", "scale") : ""}
       <div class="nav-sec">الإدارة</div>
-      ${n("finance", "المالية", "coin")}
+      ${isManager() ? n("finance", "المالية", "coin") : ""}
       ${n("clients", "العملاء", "clients")}
       ${n("team", "فريق العمل", "team")}
       ${n("settings", "الإعدادات", "settings")}
@@ -228,7 +235,7 @@ function renderSide() {
     <div class="me">${S.me.avatar ? `<img src="${esc(S.me.avatar)}" alt="">` : `<span class="avatar">${esc(initials(me?.name || S.me.name))}</span>`}
       ${window.RAKZ_PASSWORD ? `<button class="icon-btn" data-act="changePw" title="تغيير كلمة المرور" aria-label="تغيير كلمة المرور" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("settings")}</button>` : ""}
       ${window.RAKZ_SIGNOUT ? `<button class="icon-btn" data-act="signOut" title="تسجيل الخروج" aria-label="تسجيل الخروج" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("x")}</button>` : ""}
-      <div class="grow"><small>تعمل باسم</small><select id="as-sel" class="inp" data-ch="asMe" style="background:var(--nav-hover);color:var(--nav-ink);border-color:transparent;padding:4px 8px" aria-label="تعمل باسم">${opt("", S.data.lawyers.length ? "— اختر اسمك —" : "أضف الفريق أولًا", me?.id || "")}${S.data.lawyers.filter((l) => l.active !== false).map((l) => opt(l.id, l.name, me?.id || "")).join("")}</select></div></div>`;
+      <div class="grow" style="min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(me?.name || S.me.name || S.me.email || "")}</div><small>${me ? esc(ROLES[me.role] || "") : "غير مضاف إلى فريق العمل"}</small></div></div>`;
 }
 
 function renderBnav() {
@@ -300,7 +307,6 @@ A.signOut = () => window.RAKZ_SIGNOUT && window.RAKZ_SIGNOUT();
 A.changePw = () => modal("تغيير كلمة المرور", `<form id="pw-form" data-form="changePw" class="stack" style="gap:12px"><div class="field"><label for="pw1">كلمة المرور الجديدة</label><input id="pw1" class="inp" type="password" name="p1" minlength="8" required autocomplete="new-password" dir="ltr"><span class="hint">8 أحرف على الأقل.</span></div><div class="field"><label for="pw2">تأكيدها</label><input id="pw2" class="inp" type="password" name="p2" required autocomplete="new-password" dir="ltr"></div></form>`, `<button class="btn primary" type="submit" form="pw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
 F.changePw = async (d) => { if (d.p1.length < 8) return toast("كلمة المرور 8 أحرف على الأقل.", true); if (d.p1 !== d.p2) return toast("كلمتا المرور غير متطابقتين.", true); try { await window.RAKZ_PASSWORD(d.p1); closeModal(); toast("تم تغيير كلمة المرور"); } catch (e) { toast("تعذّر التغيير: " + (e.message || ""), true); } };
 A.theme = () => { setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"); renderTop(); };
-CH.asMe = (el) => { S.ui.asLid = el.value; lsSet("as", el.value); render(); };
 A.menu = () => $(".side").classList.toggle("open");
 A.notif = () => { S.ui.notifOpen = !S.ui.notifOpen; renderTop(); };
 A.openCase = (el) => go("case", el.dataset.id, el.dataset.tab || null);

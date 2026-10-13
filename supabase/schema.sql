@@ -68,3 +68,8 @@ create policy "members delete files" on storage.objects for delete to authentica
 -- Bootstrap: the first manager's lawyer record must exist before anyone else can sign in.
 -- Insert it once from the SQL editor if the team list is empty, e.g.:
 -- insert into public.documents(path, collection, id, data) values ('lawyers/owner','lawyers','owner','{"name":"المدير","role":"manager","email":"you@example.com","active":true}');
+
+-- Governance (2026-10-13): identity = signed-in email on an active lawyer record; only role «manager»
+-- assigns work, handles finance (finance rows, fees, fee proposals, invoices, contracts), manages the
+-- team and settings. Applied as migration "governance_roles"; see that migration for the full SQL
+-- (functions my_lawyer, is_manager, my_lawyer_id, no_manager_yet, manager_only, trigger guard_documents).

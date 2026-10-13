@@ -25,7 +25,7 @@ VIEWS.dashboard = () => {
   const empty = S.loaded.cases && !S.data.cases.length;
   const steps = [
     { done: S.data.lawyers.length > 0, t: "أضف فريق العمل", d: "المحامون والمستشارون الذين تُسند إليهم القضايا", r: "team" },
-    { done: !!me, t: "اختر اسمك", d: "من «تعمل باسم» أسفل القائمة", r: "team" },
+    { done: !!me, t: "ملفك في الفريق", d: "يُضاف ببريدك ليُعرف حسابك", r: "team" },
     { done: S.data.clients.length > 0, t: "أضف أول عميل", d: "بيانات الهوية أو السجل التجاري للعقود", r: "clients" },
     { done: S.data.cases.length > 0, t: "افتح أول قضية", d: "ثم ارفع مرفقاتها ليقرأها المساعد", act: "newCase" },
   ];
@@ -133,7 +133,7 @@ function caseForm(c = {}) {
     <div class="field"><label for="cf-najiz">رقم القضية في ناجز</label><input id="cf-najiz" class="inp num" name="najiz" value="${esc(c.najiz)}"></div>
     <div class="field"><label for="cf-status">الحالة</label><select id="cf-status" class="inp" name="status">${Object.entries(STATUSES).map(([k, v]) => opt(k, v.t, c.status || "intake")).join("")}</select></div>
     <div class="field"><label for="cf-value">قيمة المطالبة (ر.س)</label><input id="cf-value" class="inp num" name="value" inputmode="decimal" value="${esc(c.value)}"></div>
-    <div class="field"><label for="cf-fee">الأتعاب المتفق عليها (ر.س)</label><input id="cf-fee" class="inp num" name="fee" inputmode="decimal" value="${esc(c.fee)}"></div>
+    ${isManager() ? "" : "<!--"}<div class="field"><label for="cf-fee">الأتعاب المتفق عليها (ر.س)</label><input id="cf-fee" class="inp num" name="fee" inputmode="decimal" value="${esc(c.fee)}"></div>${isManager() ? "" : "-->"}
     ${c.id ? "" : !isManager() ? `<div class="field span2"><span class="hint">ستظهر القضية للمدير لإسنادها إلى المحامي المناسب.</span></div>` : `<div class="field span2"><label for="cf-lawyer">إسناد إلى</label><select id="cf-lawyer" class="inp" name="assignTo">${lawyerOpts(myLid() || "", "— لاحقًا —")}</select><span class="hint">إذا اخترت محاميًا غيرك يصله طلب إسناد ولا تُنقل إليه القضية إلا بعد قبوله.</span></div>`}
     <div class="field span2"><label for="cf-desc">وقائع مختصرة</label><textarea id="cf-desc" class="inp" name="description" rows="4">${esc(c.description)}</textarea></div>
   </form>`;
@@ -157,7 +157,7 @@ F.saveCase = async (d) => {
     if (dup) return toast(`العميل برقم ${cl.idNo} موجود باسم «${dup.name}». اختره من القائمة.`, true);
     if (clientId === "__new") clientId = await add("clients", cl); else await upd(`clients/${clientId}`, cl);
   }
-  const base = { title: d.title.trim(), clientId: clientId || "", clientRole: d.clientRole, opponent: d.opponent, type: d.type, court: d.court, city: d.city, circuit: d.circuit, najiz: d.najiz, status: d.status, value: d.value, fee: d.fee, description: d.description };
+  const base = { title: d.title.trim(), clientId: clientId || "", clientRole: d.clientRole, opponent: d.opponent, type: d.type, court: d.court, city: d.city, circuit: d.circuit, najiz: d.najiz, status: d.status, value: d.value, fee: isManager() ? d.fee : caseById(d.id)?.fee, description: d.description };
   if (d.id) {
     const old = caseById(d.id); await upd(`cases/${d.id}`, base);
     if (old && old.status !== d.status) await logCase(d.id, "status", `تغيير الحالة إلى «${STATUSES[d.status].t}»`);
@@ -179,7 +179,7 @@ VIEWS.case = () => {
   const tasks = S.data.tasks.filter((t) => t.caseId === c.id);
   const docs = S.data.docs.filter((d) => d.caseId === c.id);
   const asg = c.assignment;
-  const tabs = [["overview", "نظرة عامة"], ["log", "سجل الإجراءات", S.caseLog.length], ["files", "المرفقات", S.caseFiles.length], ["tasks", "المهام والمواعيد", tasks.filter((t) => t.status !== "done").length], ["docs", "المستندات", docs.length], ["reports", "تقارير العميل"], ["finance", "المالية"]];
+  const tabs = [["overview", "نظرة عامة"], ["log", "سجل الإجراءات", S.caseLog.length], ["files", "المرفقات", S.caseFiles.length], ["tasks", "المهام والمواعيد", tasks.filter((t) => t.status !== "done").length], ["docs", "المستندات", docs.length], ["reports", "تقارير العميل"], ...(isManager() ? [["finance", "المالية"]] : [])];
   return `
   <div class="crumbs"><a data-act="go" data-r="cases">القضايا</a><span>/</span><span class="num">${esc(c.ref || "")}</span></div>
   <div class="case-head">
@@ -195,11 +195,11 @@ VIEWS.case = () => {
       <div class="fact"><div class="k">المحكمة</div><div class="v">${esc(c.court || "—")}${c.circuit ? ` · ${esc(c.circuit)}` : ""}${c.city ? ` · ${esc(c.city)}` : ""}</div></div>
       <div class="fact"><div class="k">المحامي المسؤول</div><div class="v">${esc(lawyerName(c.lawyerId))}</div></div>
       <div class="fact"><div class="k">قيمة المطالبة</div><div class="v num">${c.value ? money(c.value) + " ر.س" : "—"}</div></div>
-      <div class="fact"><div class="k">الأتعاب</div><div class="v num">${c.fee ? money(c.fee) + " ر.س" : "—"}</div></div>
+      ${isManager() ? `<div class="fact"><div class="k">الأتعاب</div><div class="v num">${c.fee ? money(c.fee) + " ر.س" : "—"}</div></div>` : ""}
     </div>
     <div class="tabs">${tabs.map(([k, t, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${t}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>
   </div>
-  ${CASE_TABS[tab](c, tasks, docs)}
+  ${(tab === "finance" && !isManager() ? CASE_TABS.overview : CASE_TABS[tab])(c, tasks, docs)}
   <input type="file" id="file-in" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.txt" data-ch="filesPicked" data-id="${c.id}">`;
 };
 
@@ -228,8 +228,8 @@ CASE_TABS.overview = (c, tasks) => {
       </div>
       <div class="card"><div class="card-h"><h3>صياغة سريعة</h3></div><div class="row">
         <button class="btn sm" data-act="draftFor" data-kind="pleading" data-id="${c.id}">${icon("scale")}لائحة أو رد</button>
-        <button class="btn sm" data-act="draftFor" data-kind="contract" data-id="${c.id}">${icon("contract")}عقد</button>
-        <button class="btn sm" data-act="draftFor" data-kind="proposal" data-id="${c.id}">${icon("coin")}عرض أتعاب</button></div></div>
+        ${isManager() ? `<button class="btn sm" data-act="draftFor" data-kind="contract" data-id="${c.id}">${icon("contract")}عقد</button>` : ""}
+        ${isManager() ? `<button class="btn sm" data-act="draftFor" data-kind="proposal" data-id="${c.id}">${icon("coin")}عرض أتعاب</button>` : ""}</div></div>
     </div></div>`;
 };
 CASE_TABS.log = (c) => `<div class="cols"><div class="card"><div class="card-h"><h3>سجل الإجراءات</h3><span class="sub">يُحدَّث تلقائيًا عند رفع المرفقات والإسناد وتغيير الحالة</span></div>
@@ -286,8 +286,8 @@ CASE_TABS.tasks = (c, tasks) => {
 };
 CASE_TABS.docs = (c, _t, docs) => `<div class="card"><div class="card-h"><h3>مستندات القضية</h3><div class="row">
     <button class="btn sm" data-act="draftFor" data-kind="pleading" data-id="${c.id}">${icon("scale")}لائحة أو رد</button>
-    <button class="btn sm" data-act="draftFor" data-kind="contract" data-id="${c.id}">${icon("contract")}عقد</button>
-    <button class="btn sm" data-act="draftFor" data-kind="proposal" data-id="${c.id}">${icon("coin")}عرض أتعاب</button></div></div>
+    ${isManager() ? `<button class="btn sm" data-act="draftFor" data-kind="contract" data-id="${c.id}">${icon("contract")}عقد</button>` : ""}
+    ${isManager() ? `<button class="btn sm" data-act="draftFor" data-kind="proposal" data-id="${c.id}">${icon("coin")}عرض أتعاب</button>` : ""}</div></div>
   ${docs.length ? `<div class="list">${docs.sort((a, b) => (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || "")).map(docRow).join("")}</div>` : emptyBox("docs", "لا مستندات بعد", "")}</div>`;
 
 /* ---------------- Assignment ---------------- */
@@ -333,7 +333,7 @@ VIEWS.assign = () => {
   const mgr = isManager(); const unassigned = activeCases().filter((c) => !c.lawyerId && c.assignment?.status !== "pending");
   return `<div class="page-head"><div><h1>طلبات الإسناد</h1><p>يُسند المدير القضايا، ولا تنتقل القضية إلى المحامي إلا بعد قبوله، ويُسجَّل ذلك في سجلها.</p></div></div>
   ${mgr ? `<div class="card"><div class="card-h"><h3>قضايا بلا محامٍ</h3><span class="sub num">${unassigned.length}</span></div>${unassigned.length ? `<div class="list">${unassigned.map((c) => `<div class="li"><div class="body"><div class="ttl" data-act="openCase" data-id="${c.id}" style="cursor:pointer">${esc(c.title)}</div><div class="meta"><span>${esc(clientName(c.clientId))}</span><span>${esc(c.type || "")}</span><span>${ago(c.createdAt)}</span></div></div><button class="btn sm primary" data-act="assignCase" data-id="${c.id}">${icon("send")}إسناد</button></div>`).join("")}</div>` : `<p class="muted small" style="margin:0">كل القضايا لها محامٍ مسؤول.</p>`}</div>` : `<div class="banner"><div class="grow">الإسناد من صلاحية المدير. تظهر لك هنا القضايا المسندة إليك لقبولها أو الاعتذار عنها.</div></div>`}
-  ${!l ? `<div class="banner gold"><div class="grow">اختر اسمك من «تعمل باسم» أسفل القائمة لتظهر لك الطلبات الموجهة إليك.</div></div>` : ""}
+  ${!l ? `<div class="banner gold"><div class="grow">حسابك غير مضاف إلى «فريق العمل» ببريده، فلا تظهر لك الطلبات الموجهة إليك. اطلب من المدير إضافته.</div></div>` : ""}
   <div class="card"><div class="card-h"><h3>موجهة إليك</h3><span class="sub num">${incoming.length}</span></div>
     ${incoming.length ? `<div class="list">${incoming.map((c) => `<div class="li"><div class="body"><div class="ttl" data-act="openCase" data-id="${c.id}" style="cursor:pointer">${esc(c.title)}</div><div class="meta"><span>${esc(clientName(c.clientId))}</span><span>${esc(c.court || "")}</span><span>من ${esc(lawyerName(c.assignment.from))} · ${ago(c.assignment.at)}</span>${nextDateForCase(c.id) ? `<span>الموعد القادم ${fmtDate(nextDateForCase(c.id).due)}</span>` : ""}</div>${c.assignment.note ? `<div class="small" style="margin-top:4px">«${esc(c.assignment.note)}»</div>` : ""}</div>
       <button class="btn primary sm" data-act="acceptAsg" data-id="${c.id}">${icon("check")}قبول</button><button class="btn sm" data-act="declineAsg" data-id="${c.id}">اعتذار</button></div>`).join("")}</div>` : emptyBox("inbox", "لا طلبات بانتظارك", "")}</div>
@@ -356,7 +356,7 @@ VIEWS.tasks = () => {
   <div class="row"><div class="chips"><span class="chip ${f.mine ? "on" : ""}" data-act="tf" data-k="mine" data-v="1">مهامي</span><span class="chip ${!f.mine ? "on" : ""}" data-act="tf" data-k="mine" data-v="">كل المكتب</span></div>
     <span class="muted">|</span><div class="chips"><span class="chip ${!f.kind ? "on" : ""}" data-act="tf" data-k="kind" data-v="">الكل</span>${Object.entries(TASK_KINDS).map(([k, v]) => `<span class="chip ${f.kind === k ? "on" : ""}" data-act="tf" data-k="kind" data-v="${k}">${v.t}</span>`).join("")}</div>
     <label class="chk"><input type="checkbox" data-ch="tfDone" ${f.done ? "checked" : ""}> إظهار المنجز</label></div>
-  ${f.mine && !myLid() ? `<div class="banner gold"><div class="grow">اختر اسمك من «تعمل باسم» أسفل القائمة لتظهر «مهامي».</div></div>` : ""}
+  ${f.mine && !myLid() ? `<div class="banner gold"><div class="grow">حسابك غير مضاف إلى «فريق العمل» ببريده، فلا تظهر «مهامي». اطلب من المدير إضافته.</div></div>` : ""}
   ${body || `<div class="card">${emptyBox("check", "لا توجد مهام هنا", "أضف مهمة أو موعد جلسة، أو حلّل مرفقات القضايا ليستخرج المساعد المواعيد.", `<button class="btn" data-act="newTask">${icon("plus")}إضافة</button>`)}</div>`}`;
 };
 A.tf = (el) => { S.ui.taskFilter[el.dataset.k] = el.dataset.k === "mine" ? !!el.dataset.v : el.dataset.v; render(); };
@@ -437,13 +437,13 @@ F.saveClient = async (d) => {
 /* ---------------- Team ---------------- */
 VIEWS.team = () => {
   const act = activeCases();
-  return `<div class="page-head"><div><h1>فريق العمل</h1><p>اختر اسمك من «تعمل باسم» أسفل القائمة. صفة «مدير» أو «شريك» تمنح صلاحية إسناد القضايا والاستشارات.</p></div><button class="btn gold" data-act="newLawyer">${icon("plus")}إضافة عضو</button></div>
-  ${S.data.lawyers.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الاسم</th><th>الصفة</th><th>التخصص</th><th>رقم الترخيص</th><th>قضايا جارية</th><th>الحساب</th><th></th></tr></thead><tbody>
+  return `<div class="page-head"><div><h1>فريق العمل</h1><p>كل عضو يدخل بحسابه وبريده المسجل هنا. صفة «مدير» وحدها تمنح الإسناد والمالية وإدارة الفريق والإعدادات.</p></div>${isManager() ? `<button class="btn gold" data-act="newLawyer">${icon("plus")}إضافة عضو</button>` : ""}</div>
+  ${S.data.lawyers.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الاسم</th><th>الصفة</th><th>التخصص</th><th>رقم الترخيص</th><th>قضايا جارية</th><th>الدخول</th><th></th></tr></thead><tbody>
     ${S.data.lawyers.map((l) => `<tr><td class="t"><span class="who"><span class="avatar">${esc(initials(l.name))}</span>${esc(l.name)}${l.active === false ? ' <span class="pill">موقوف</span>' : ""}</span></td><td>${esc(ROLES[l.role] || "")}</td><td>${esc(l.specialty || "—")}</td><td class="num">${esc(l.license || "—")}</td><td class="num">${act.filter((c) => c.lawyerId === l.id).length}</td>
-      <td><div class="row" style="gap:6px;flex-wrap:nowrap">${l.id === myLid() ? pill("أنت", "gold") : `<button class="btn sm" data-act="linkThis" data-id="${l.id}">${icon("user")}أعمل باسمه</button>`}${window.RAKZ_PASSWORD && l.id !== myLid() ? (l.email ? `<a class="btn sm" href="${esc(teamInviteHref(l))}" target="_blank" rel="noopener" title="إرسال دعوة الدخول عبر واتساب">${icon("wa")}دعوة</a>` : `<span class="pill warn" title="أضف بريده حتى يستطيع إنشاء حسابه">بلا بريد</span>`) : ""}</div></td>
-      <td><button class="btn sm ghost" data-act="editLawyer" data-id="${l.id}">${icon("edit")}</button></td></tr>`).join("")}</tbody></table></div>`
-  : `<div class="card">${emptyBox("team", "أضف أعضاء المكتب", "أضف الشركاء والمحامين، ثم اختر اسمك من «تعمل باسم» أسفل القائمة.", `<button class="btn gold" data-act="createMe">${icon("plus")}ابدأ بملفك أنت</button>`)}</div>`}
-  <div class="card"><h3>دعوة الفريق</h3><p class="muted" style="margin:6px 0 0">${window.RAKZ_PASSWORD ? "١) أضف العضو هنا ببريده الإلكتروني. ٢) اضغط «دعوة» لترسل له رابط المنصة عبر واتساب. ٣) يفتح الرابط ويختار «إنشاء حساب» بنفس البريد وكلمة مرور يختارها. لا يدخل المنصة إلا بريد مضاف هنا، وإيقاف العضو يمنع دخوله فورًا." : "شارك رابط المنصة مع الفريق من زر المشاركة، ويختار كل عضو اسمه من «تعمل باسم» أسفل القائمة."}</p></div>`;
+      <td><div class="row" style="gap:6px;flex-wrap:nowrap">${l.id === myLid() ? pill("أنت", "gold") : ""}${window.RAKZ_PASSWORD && isManager() && l.id !== myLid() ? (l.email ? `<a class="btn sm" href="${esc(teamInviteHref(l))}" target="_blank" rel="noopener" title="إرسال دعوة الدخول عبر واتساب">${icon("wa")}دعوة</a>` : `<span class="pill warn" title="أضف بريده حتى يستطيع إنشاء حسابه">بلا بريد</span>`) : ""}</div></td>
+      <td>${isManager() ? `<button class="btn sm ghost" data-act="editLawyer" data-id="${l.id}">${icon("edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+  : `<div class="card">${emptyBox("team", "أضف أعضاء المكتب", "ابدأ بإنشاء ملفك أنت بصفة «مدير»، ثم أضف بقية الفريق ببريدهم.", `<button class="btn gold" data-act="createMe">${icon("plus")}أنشئ ملفي مديرًا</button>`)}</div>`}
+  <div class="card"><h3>دعوة الفريق</h3><p class="muted" style="margin:6px 0 0">${window.RAKZ_PASSWORD ? "١) أضف العضو هنا ببريده الإلكتروني. ٢) اضغط «دعوة» لترسل له رابط المنصة عبر واتساب. ٣) يفتح الرابط ويختار «إنشاء حساب» بنفس البريد وكلمة مرور يختارها. لا يدخل المنصة إلا بريد مضاف هنا، وإيقاف العضو يمنع دخوله فورًا." : "شارك رابط المنصة مع الفريق من زر المشاركة، ويضغط كل عضو «هذا أنا» مرة واحدة لربط حسابه بملفه."}</p></div>`;
 };
 function teamInviteHref(l) {
   const url = location.origin + location.pathname;
@@ -460,21 +460,24 @@ function lawyerForm(l = {}) {
     <div class="field span2"><label for="lw-em">البريد</label><input id="lw-em" class="inp" type="email" name="email" value="${esc(l.email)}" dir="ltr">${window.RAKZ_PASSWORD ? '<span class="hint">يدخل به العضو إلى المنصة. لا يُفتح الحساب إلا لبريد مسجل هنا.</span>' : ""}</div>
     ${l.id ? `<label class="chk span2"><input type="checkbox" name="inactive" value="1" ${l.active === false ? "checked" : ""}> إيقاف العضو (لا يظهر في الإسناد)</label>${l.userId ? `<label class="chk span2"><input type="checkbox" name="unlink" value="1"> فك ربط الحساب بهذا الملف</label>` : ""}` : ""}</form>`;
 }
-A.newLawyer = () => { if (!guardWrite()) return; modal("عضو جديد", lawyerForm(), `<button class="btn primary" type="submit" form="lw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
-A.editLawyer = (el) => modal("تعديل العضو", lawyerForm(byId(S.data.lawyers, el.dataset.id)), `<button class="btn primary" type="submit" form="lw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
-A.createMe = () => { if (!guardWrite()) return; modal("أنشئ ملفك في الفريق", lawyerForm({ name: S.me.name, self: true, role: S.me.isOwner ? "partner" : "lawyer" }), `<button class="btn primary" type="submit" form="lw-form">حفظ وربط حسابي</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.newLawyer = () => { if (!guardWrite()) return; if (!isManager()) return toast("إدارة الفريق من صلاحية المدير.", true); modal("عضو جديد", lawyerForm(), `<button class="btn primary" type="submit" form="lw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.editLawyer = (el) => isManager() ? modal("تعديل العضو", lawyerForm(byId(S.data.lawyers, el.dataset.id)), `<button class="btn primary" type="submit" form="lw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`) : toast("إدارة الفريق من صلاحية المدير.", true);
+A.createMe = () => { if (!guardWrite()) return; if (S.data.lawyers.length && !isManager()) return toast("يضيفك المدير إلى فريق العمل.", true); modal("أنشئ ملفك في الفريق", lawyerForm({ name: S.me.name, email: S.me.email, self: true, role: "manager" }), `<button class="btn primary" type="submit" form="lw-form">حفظ وربط حسابي</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.saveLawyer = async (d) => {
-  const data = { name: d.name.trim(), role: d.role, specialty: d.specialty, license: d.license, phone: d.phone, email: d.email };
+  const first = !S.data.lawyers.length;
+  if (!first && !isManager()) return toast("إدارة الفريق من صلاحية المدير.", true);
+  const data = { name: d.name.trim(), role: first ? "manager" : d.role, specialty: d.specialty, license: d.license, phone: d.phone, email: (d.email || "").trim().toLowerCase() };
+  if (window.RAKZ_PASSWORD && !data.email) return toast("البريد مطلوب: به يدخل العضو إلى المنصة.", true);
+  if (d.id && d.id === myLid() && data.role !== "manager" && !S.data.lawyers.some((l) => l.id !== d.id && l.role === "manager" && l.active !== false)) return toast("لا يمكن إزالة صفة المدير عن آخر مدير.", true);
   if (d.id) { data.active = d.inactive !== "1"; if (d.unlink === "1") data.userId = ""; await upd(`lawyers/${d.id}`, data); }
-  else { const nid = await add("lawyers", { ...data, active: true, userId: "" }); if (d.self || !myLid()) { S.ui.asLid = nid; lsSet("as", nid); } }
+  else await add("lawyers", { ...data, active: true, userId: d.self && !window.RAKZ_PASSWORD ? S.me.id : "" });
   closeModal(); toast("حُفظ");
 };
-A.linkThis = (el) => { S.ui.asLid = el.dataset.id; lsSet("as", el.dataset.id); render(); toast(`تعمل الآن باسم ${lawyerName(el.dataset.id)}`); };
 A.linkMe = async () => { const id = $("#link-sel")?.value; if (id) { await upd(`lawyers/${id}`, { userId: S.me.id }); toast("رُبط حسابك بملفك"); } };
 
 /* ---------------- Settings ---------------- */
 VIEWS.settings = () => {
-  const f = S.firm; const ro = false;
+  const f = S.firm; const ro = !isManager();
   const fld = (k, label, cls = "") => `<div class="field ${cls}"><label for="st-${k}">${label}</label><input id="st-${k}" class="inp" name="${k}" value="${esc(f[k])}" ${ro ? "disabled" : ""}></div>`;
   return `<div class="page-head"><div><h1>الإعدادات</h1><p>بيانات المكتب تظهر في ترويسة العقود وعروض الأتعاب واللوائح.</p></div></div>
   ${ro ? `<div class="banner warn"><div class="grow">تعديل الإعدادات متاح للشريك المدير وأصحاب صلاحية التحرير الكاملة.</div></div>` : ""}

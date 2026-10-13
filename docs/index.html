@@ -107,7 +107,7 @@
     const ref = {
       id, path,
       async get() { return snapDoc(await getDoc(path), path); },
-      async set(data) { const { error } = await T().upsert({ path, collection, id, data, updated_at: new Date().toISOString() }); if (error) throw err(/row-level|permission/i.test(error.message) ? "invalid_argument" : "unavailable", error.message); },
+      async set(data) { const { error } = await T().upsert({ path, collection, id, data, updated_at: new Date().toISOString() }); if (error) throw err(/requires_manager/.test(error.message) ? "forbidden" : /row-level|permission/i.test(error.message) ? "invalid_argument" : "unavailable", error.message); },
       async update(patch) { const cur = await getDoc(path); if (!cur) throw err("invalid_argument", "document does not exist"); return ref.set(merge(cur.data, patch)); },
       async delete() { const { error } = await T().delete().eq("path", path); if (error) throw err("unavailable", error.message); },
       onSnapshot(next, onErr) {
@@ -675,7 +675,7 @@ const S = {
   firm: { ...FIRM_DEFAULTS }, templates: {},
   route: { name: "dashboard", id: null, tab: null },
   caseSub: null, caseLog: [], caseFiles: [], caseReports: [], caseLoadedFor: null,
-  ui: { asLid: "", caseFilter: { q: "", status: "", type: "", lawyer: "", mine: false }, taskFilter: { mine: true, kind: "", done: false }, selected: new Set(), openFile: null, notifOpen: false },
+  ui: { caseFilter: { q: "", status: "", type: "", lawyer: "", mine: false }, taskFilter: { mine: true, kind: "", done: false }, selected: new Set(), openFile: null, notifOpen: false },
   gen: null, // in-flight AI generation {docId, text, ctl}
   drafts: {}, // per-form values that survive re-render
 };
@@ -708,10 +708,16 @@ const byId = (arr, id) => arr.find((x) => x.id === id);
 const lawyerName = (id) => byId(S.data.lawyers, id)?.name || "غير مسند";
 const clientName = (id) => byId(S.data.clients, id)?.name || "—";
 const caseById = (id) => byId(S.data.cases, id);
-const myLawyer = () => (S.me.id && S.data.lawyers.find((l) => l.userId === S.me.id)) || S.data.lawyers.find((l) => l.id === S.ui.asLid) || null;
+/* Identity is the signed-in account: its email (standalone) or the Claude user id it was linked to (Claude version).
+   Nobody can act as another member. */
+const myLawyer = () => {
+  const em = (S.me.email || "").toLowerCase();
+  return (em && S.data.lawyers.find((l) => l.active !== false && (l.email || "").toLowerCase() === em)) || (S.me.id && S.data.lawyers.find((l) => l.userId === S.me.id)) || null;
+};
 const myLid = () => myLawyer()?.id || null;
 /* Assignment is reserved for managers (role مدير/شريك); the artifact owner counts as manager until a profile is chosen. */
-const isManager = () => { const m = myLawyer(); return m ? ["manager", "partner"].includes(m.role) : !!S.me.isOwner || !S.data.lawyers.some((l) => ["manager", "partner"].includes(l.role)); };
+/* Only role «مدير» assigns work, handles finance, manages the team and settings (enforced again by the database). */
+const isManager = () => { const m = myLawyer(); return m ? m.role === "manager" : !!S.me.isOwner && !S.data.lawyers.some((l) => l.role === "manager"); };
 const pill = (t, c) => `<span class="pill ${c || ""}">${esc(t)}</span>`;
 const statusPill = (s) => pill(STATUSES[s]?.t || "—", STATUSES[s]?.c);
 const kindPill = (k) => pill(TASK_KINDS[k]?.t || "مهمة", TASK_KINDS[k]?.c);
@@ -766,7 +772,8 @@ const icon = (n, cls) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 const COLL = ["lawyers", "clients", "cases", "tasks", "docs", "consults", "finance"];
 function canWrite() { return !!S.caps.db && S.me.canWrite !== false; }
 function guardWrite() { if (!S.caps.db) { toast("قاعدة البيانات غير متاحة في هذا العرض. افتح المنصة من حسابك في Claude.", true); return false; } return true; }
-function dbErr(e) { console.error(e); const c = e?.code; if (c === "invalid_argument") toast("رفضت المنصة الحفظ. تأكد أن الرابط مشارك معك بصلاحية تسمح بالتعديل.", true); else if (c === "quota_exceeded") toast("امتلأت سعة قاعدة البيانات. احذف سجلات قديمة أو انقل الأرشيف.", true); else toast("تعذّر الحفظ. حاول مرة أخرى بعد لحظات.", true); throw e; }
+function dbErr(e) { console.error(e); const c = e?.code;
+  if (c === "forbidden") { toast(/finance/.test(e.message || "") ? "الشؤون المالية من صلاحية المدير." : "هذا الإجراء من صلاحية المدير.", true); throw e; } if (c === "invalid_argument") toast("رفضت المنصة الحفظ. تأكد أن الرابط مشارك معك بصلاحية تسمح بالتعديل.", true); else if (c === "quota_exceeded") toast("امتلأت سعة قاعدة البيانات. احذف سجلات قديمة أو انقل الأرشيف.", true); else toast("تعذّر الحفظ. حاول مرة أخرى بعد لحظات.", true); throw e; }
 function clean(o) { return JSON.parse(JSON.stringify(o)); }
 async function add(coll, data) { if (!guardWrite()) throw new Error("ro"); const ref = S.caps.db.collection(coll).doc(); try { await ref.set(clean({ ...data, createdAt: nowIso(), createdBy: myLid() || S.me.id })); } catch (e) { dbErr(e); } return ref.id; }
 async function put(path, data) { if (!guardWrite()) throw new Error("ro"); try { await S.caps.db.doc(path).set(clean(data)); } catch (e) { dbErr(e); } }
@@ -856,7 +863,7 @@ function renderSide() {
       ${n("drafting", "العقود واللوائح والعروض", "docs")}
       ${window.RAKZ_LAWS ? n("laws", "المكتبة النظامية", "scale") : ""}
       <div class="nav-sec">الإدارة</div>
-      ${n("finance", "المالية", "coin")}
+      ${isManager() ? n("finance", "المالية", "coin") : ""}
       ${n("clients", "العملاء", "clients")}
       ${n("team", "فريق العمل", "team")}
       ${n("settings", "الإعدادات", "settings")}
@@ -864,7 +871,7 @@ function renderSide() {
     <div class="me">${S.me.avatar ? `<img src="${esc(S.me.avatar)}" alt="">` : `<span class="avatar">${esc(initials(me?.name || S.me.name))}</span>`}
       ${window.RAKZ_PASSWORD ? `<button class="icon-btn" data-act="changePw" title="تغيير كلمة المرور" aria-label="تغيير كلمة المرور" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("settings")}</button>` : ""}
       ${window.RAKZ_SIGNOUT ? `<button class="icon-btn" data-act="signOut" title="تسجيل الخروج" aria-label="تسجيل الخروج" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("x")}</button>` : ""}
-      <div class="grow"><small>تعمل باسم</small><select id="as-sel" class="inp" data-ch="asMe" style="background:var(--nav-hover);color:var(--nav-ink);border-color:transparent;padding:4px 8px" aria-label="تعمل باسم">${opt("", S.data.lawyers.length ? "— اختر اسمك —" : "أضف الفريق أولًا", me?.id || "")}${S.data.lawyers.filter((l) => l.active !== false).map((l) => opt(l.id, l.name, me?.id || "")).join("")}</select></div></div>`;
+      <div class="grow" style="min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(me?.name || S.me.name || S.me.email || "")}</div><small>${me ? esc(ROLES[me.role] || "") : "غير مضاف إلى فريق العمل"}</small></div></div>`;
 }
 
 function renderBnav() {
@@ -936,7 +943,6 @@ A.signOut = () => window.RAKZ_SIGNOUT && window.RAKZ_SIGNOUT();
 A.changePw = () => modal("تغيير كلمة المرور", `<form id="pw-form" data-form="changePw" class="stack" style="gap:12px"><div class="field"><label for="pw1">كلمة المرور الجديدة</label><input id="pw1" class="inp" type="password" name="p1" minlength="8" required autocomplete="new-password" dir="ltr"><span class="hint">8 أحرف على الأقل.</span></div><div class="field"><label for="pw2">تأكيدها</label><input id="pw2" class="inp" type="password" name="p2" required autocomplete="new-password" dir="ltr"></div></form>`, `<button class="btn primary" type="submit" form="pw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
 F.changePw = async (d) => { if (d.p1.length < 8) return toast("كلمة المرور 8 أحرف على الأقل.", true); if (d.p1 !== d.p2) return toast("كلمتا المرور غير متطابقتين.", true); try { await window.RAKZ_PASSWORD(d.p1); closeModal(); toast("تم تغيير كلمة المرور"); } catch (e) { toast("تعذّر التغيير: " + (e.message || ""), true); } };
 A.theme = () => { setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"); renderTop(); };
-CH.asMe = (el) => { S.ui.asLid = el.value; lsSet("as", el.value); render(); };
 A.menu = () => $(".side").classList.toggle("open");
 A.notif = () => { S.ui.notifOpen = !S.ui.notifOpen; renderTop(); };
 A.openCase = (el) => go("case", el.dataset.id, el.dataset.tab || null);
@@ -1001,7 +1007,7 @@ VIEWS.dashboard = () => {
   const empty = S.loaded.cases && !S.data.cases.length;
   const steps = [
     { done: S.data.lawyers.length > 0, t: "أضف فريق العمل", d: "المحامون والمستشارون الذين تُسند إليهم القضايا", r: "team" },
-    { done: !!me, t: "اختر اسمك", d: "من «تعمل باسم» أسفل القائمة", r: "team" },
+    { done: !!me, t: "ملفك في الفريق", d: "يُضاف ببريدك ليُعرف حسابك", r: "team" },
     { done: S.data.clients.length > 0, t: "أضف أول عميل", d: "بيانات الهوية أو السجل التجاري للعقود", r: "clients" },
     { done: S.data.cases.length > 0, t: "افتح أول قضية", d: "ثم ارفع مرفقاتها ليقرأها المساعد", act: "newCase" },
   ];
@@ -1109,7 +1115,7 @@ function caseForm(c = {}) {
     <div class="field"><label for="cf-najiz">رقم القضية في ناجز</label><input id="cf-najiz" class="inp num" name="najiz" value="${esc(c.najiz)}"></div>
     <div class="field"><label for="cf-status">الحالة</label><select id="cf-status" class="inp" name="status">${Object.entries(STATUSES).map(([k, v]) => opt(k, v.t, c.status || "intake")).join("")}</select></div>
     <div class="field"><label for="cf-value">قيمة المطالبة (ر.س)</label><input id="cf-value" class="inp num" name="value" inputmode="decimal" value="${esc(c.value)}"></div>
-    <div class="field"><label for="cf-fee">الأتعاب المتفق عليها (ر.س)</label><input id="cf-fee" class="inp num" name="fee" inputmode="decimal" value="${esc(c.fee)}"></div>
+    ${isManager() ? "" : "<!--"}<div class="field"><label for="cf-fee">الأتعاب المتفق عليها (ر.س)</label><input id="cf-fee" class="inp num" name="fee" inputmode="decimal" value="${esc(c.fee)}"></div>${isManager() ? "" : "-->"}
     ${c.id ? "" : !isManager() ? `<div class="field span2"><span class="hint">ستظهر القضية للمدير لإسنادها إلى المحامي المناسب.</span></div>` : `<div class="field span2"><label for="cf-lawyer">إسناد إلى</label><select id="cf-lawyer" class="inp" name="assignTo">${lawyerOpts(myLid() || "", "— لاحقًا —")}</select><span class="hint">إذا اخترت محاميًا غيرك يصله طلب إسناد ولا تُنقل إليه القضية إلا بعد قبوله.</span></div>`}
     <div class="field span2"><label for="cf-desc">وقائع مختصرة</label><textarea id="cf-desc" class="inp" name="description" rows="4">${esc(c.description)}</textarea></div>
   </form>`;
@@ -1133,7 +1139,7 @@ F.saveCase = async (d) => {
     if (dup) return toast(`العميل برقم ${cl.idNo} موجود باسم «${dup.name}». اختره من القائمة.`, true);
     if (clientId === "__new") clientId = await add("clients", cl); else await upd(`clients/${clientId}`, cl);
   }
-  const base = { title: d.title.trim(), clientId: clientId || "", clientRole: d.clientRole, opponent: d.opponent, type: d.type, court: d.court, city: d.city, circuit: d.circuit, najiz: d.najiz, status: d.status, value: d.value, fee: d.fee, description: d.description };
+  const base = { title: d.title.trim(), clientId: clientId || "", clientRole: d.clientRole, opponent: d.opponent, type: d.type, court: d.court, city: d.city, circuit: d.circuit, najiz: d.najiz, status: d.status, value: d.value, fee: isManager() ? d.fee : caseById(d.id)?.fee, description: d.description };
   if (d.id) {
     const old = caseById(d.id); await upd(`cases/${d.id}`, base);
     if (old && old.status !== d.status) await logCase(d.id, "status", `تغيير الحالة إلى «${STATUSES[d.status].t}»`);
@@ -1155,7 +1161,7 @@ VIEWS.case = () => {
   const tasks = S.data.tasks.filter((t) => t.caseId === c.id);
   const docs = S.data.docs.filter((d) => d.caseId === c.id);
   const asg = c.assignment;
-  const tabs = [["overview", "نظرة عامة"], ["log", "سجل الإجراءات", S.caseLog.length], ["files", "المرفقات", S.caseFiles.length], ["tasks", "المهام والمواعيد", tasks.filter((t) => t.status !== "done").length], ["docs", "المستندات", docs.length], ["reports", "تقارير العميل"], ["finance", "المالية"]];
+  const tabs = [["overview", "نظرة عامة"], ["log", "سجل الإجراءات", S.caseLog.length], ["files", "المرفقات", S.caseFiles.length], ["tasks", "المهام والمواعيد", tasks.filter((t) => t.status !== "done").length], ["docs", "المستندات", docs.length], ["reports", "تقارير العميل"], ...(isManager() ? [["finance", "المالية"]] : [])];
   return `
   <div class="crumbs"><a data-act="go" data-r="cases">القضايا</a><span>/</span><span class="num">${esc(c.ref || "")}</span></div>
   <div class="case-head">
@@ -1171,11 +1177,11 @@ VIEWS.case = () => {
       <div class="fact"><div class="k">المحكمة</div><div class="v">${esc(c.court || "—")}${c.circuit ? ` · ${esc(c.circuit)}` : ""}${c.city ? ` · ${esc(c.city)}` : ""}</div></div>
       <div class="fact"><div class="k">المحامي المسؤول</div><div class="v">${esc(lawyerName(c.lawyerId))}</div></div>
       <div class="fact"><div class="k">قيمة المطالبة</div><div class="v num">${c.value ? money(c.value) + " ر.س" : "—"}</div></div>
-      <div class="fact"><div class="k">الأتعاب</div><div class="v num">${c.fee ? money(c.fee) + " ر.س" : "—"}</div></div>
+      ${isManager() ? `<div class="fact"><div class="k">الأتعاب</div><div class="v num">${c.fee ? money(c.fee) + " ر.س" : "—"}</div></div>` : ""}
     </div>
     <div class="tabs">${tabs.map(([k, t, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${t}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>
   </div>
-  ${CASE_TABS[tab](c, tasks, docs)}
+  ${(tab === "finance" && !isManager() ? CASE_TABS.overview : CASE_TABS[tab])(c, tasks, docs)}
   <input type="file" id="file-in" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.txt" data-ch="filesPicked" data-id="${c.id}">`;
 };
 
@@ -1204,8 +1210,8 @@ CASE_TABS.overview = (c, tasks) => {
       </div>
       <div class="card"><div class="card-h"><h3>صياغة سريعة</h3></div><div class="row">
         <button class="btn sm" data-act="draftFor" data-kind="pleading" data-id="${c.id}">${icon("scale")}لائحة أو رد</button>
-        <button class="btn sm" data-act="draftFor" data-kind="contract" data-id="${c.id}">${icon("contract")}عقد</button>
-        <button class="btn sm" data-act="draftFor" data-kind="proposal" data-id="${c.id}">${icon("coin")}عرض أتعاب</button></div></div>
+        ${isManager() ? `<button class="btn sm" data-act="draftFor" data-kind="contract" data-id="${c.id}">${icon("contract")}عقد</button>` : ""}
+        ${isManager() ? `<button class="btn sm" data-act="draftFor" data-kind="proposal" data-id="${c.id}">${icon("coin")}عرض أتعاب</button>` : ""}</div></div>
     </div></div>`;
 };
 CASE_TABS.log = (c) => `<div class="cols"><div class="card"><div class="card-h"><h3>سجل الإجراءات</h3><span class="sub">يُحدَّث تلقائيًا عند رفع المرفقات والإسناد وتغيير الحالة</span></div>
@@ -1262,8 +1268,8 @@ CASE_TABS.tasks = (c, tasks) => {
 };
 CASE_TABS.docs = (c, _t, docs) => `<div class="card"><div class="card-h"><h3>مستندات القضية</h3><div class="row">
     <button class="btn sm" data-act="draftFor" data-kind="pleading" data-id="${c.id}">${icon("scale")}لائحة أو رد</button>
-    <button class="btn sm" data-act="draftFor" data-kind="contract" data-id="${c.id}">${icon("contract")}عقد</button>
-    <button class="btn sm" data-act="draftFor" data-kind="proposal" data-id="${c.id}">${icon("coin")}عرض أتعاب</button></div></div>
+    ${isManager() ? `<button class="btn sm" data-act="draftFor" data-kind="contract" data-id="${c.id}">${icon("contract")}عقد</button>` : ""}
+    ${isManager() ? `<button class="btn sm" data-act="draftFor" data-kind="proposal" data-id="${c.id}">${icon("coin")}عرض أتعاب</button>` : ""}</div></div>
   ${docs.length ? `<div class="list">${docs.sort((a, b) => (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || "")).map(docRow).join("")}</div>` : emptyBox("docs", "لا مستندات بعد", "")}</div>`;
 
 /* ---------------- Assignment ---------------- */
@@ -1309,7 +1315,7 @@ VIEWS.assign = () => {
   const mgr = isManager(); const unassigned = activeCases().filter((c) => !c.lawyerId && c.assignment?.status !== "pending");
   return `<div class="page-head"><div><h1>طلبات الإسناد</h1><p>يُسند المدير القضايا، ولا تنتقل القضية إلى المحامي إلا بعد قبوله، ويُسجَّل ذلك في سجلها.</p></div></div>
   ${mgr ? `<div class="card"><div class="card-h"><h3>قضايا بلا محامٍ</h3><span class="sub num">${unassigned.length}</span></div>${unassigned.length ? `<div class="list">${unassigned.map((c) => `<div class="li"><div class="body"><div class="ttl" data-act="openCase" data-id="${c.id}" style="cursor:pointer">${esc(c.title)}</div><div class="meta"><span>${esc(clientName(c.clientId))}</span><span>${esc(c.type || "")}</span><span>${ago(c.createdAt)}</span></div></div><button class="btn sm primary" data-act="assignCase" data-id="${c.id}">${icon("send")}إسناد</button></div>`).join("")}</div>` : `<p class="muted small" style="margin:0">كل القضايا لها محامٍ مسؤول.</p>`}</div>` : `<div class="banner"><div class="grow">الإسناد من صلاحية المدير. تظهر لك هنا القضايا المسندة إليك لقبولها أو الاعتذار عنها.</div></div>`}
-  ${!l ? `<div class="banner gold"><div class="grow">اختر اسمك من «تعمل باسم» أسفل القائمة لتظهر لك الطلبات الموجهة إليك.</div></div>` : ""}
+  ${!l ? `<div class="banner gold"><div class="grow">حسابك غير مضاف إلى «فريق العمل» ببريده، فلا تظهر لك الطلبات الموجهة إليك. اطلب من المدير إضافته.</div></div>` : ""}
   <div class="card"><div class="card-h"><h3>موجهة إليك</h3><span class="sub num">${incoming.length}</span></div>
     ${incoming.length ? `<div class="list">${incoming.map((c) => `<div class="li"><div class="body"><div class="ttl" data-act="openCase" data-id="${c.id}" style="cursor:pointer">${esc(c.title)}</div><div class="meta"><span>${esc(clientName(c.clientId))}</span><span>${esc(c.court || "")}</span><span>من ${esc(lawyerName(c.assignment.from))} · ${ago(c.assignment.at)}</span>${nextDateForCase(c.id) ? `<span>الموعد القادم ${fmtDate(nextDateForCase(c.id).due)}</span>` : ""}</div>${c.assignment.note ? `<div class="small" style="margin-top:4px">«${esc(c.assignment.note)}»</div>` : ""}</div>
       <button class="btn primary sm" data-act="acceptAsg" data-id="${c.id}">${icon("check")}قبول</button><button class="btn sm" data-act="declineAsg" data-id="${c.id}">اعتذار</button></div>`).join("")}</div>` : emptyBox("inbox", "لا طلبات بانتظارك", "")}</div>
@@ -1332,7 +1338,7 @@ VIEWS.tasks = () => {
   <div class="row"><div class="chips"><span class="chip ${f.mine ? "on" : ""}" data-act="tf" data-k="mine" data-v="1">مهامي</span><span class="chip ${!f.mine ? "on" : ""}" data-act="tf" data-k="mine" data-v="">كل المكتب</span></div>
     <span class="muted">|</span><div class="chips"><span class="chip ${!f.kind ? "on" : ""}" data-act="tf" data-k="kind" data-v="">الكل</span>${Object.entries(TASK_KINDS).map(([k, v]) => `<span class="chip ${f.kind === k ? "on" : ""}" data-act="tf" data-k="kind" data-v="${k}">${v.t}</span>`).join("")}</div>
     <label class="chk"><input type="checkbox" data-ch="tfDone" ${f.done ? "checked" : ""}> إظهار المنجز</label></div>
-  ${f.mine && !myLid() ? `<div class="banner gold"><div class="grow">اختر اسمك من «تعمل باسم» أسفل القائمة لتظهر «مهامي».</div></div>` : ""}
+  ${f.mine && !myLid() ? `<div class="banner gold"><div class="grow">حسابك غير مضاف إلى «فريق العمل» ببريده، فلا تظهر «مهامي». اطلب من المدير إضافته.</div></div>` : ""}
   ${body || `<div class="card">${emptyBox("check", "لا توجد مهام هنا", "أضف مهمة أو موعد جلسة، أو حلّل مرفقات القضايا ليستخرج المساعد المواعيد.", `<button class="btn" data-act="newTask">${icon("plus")}إضافة</button>`)}</div>`}`;
 };
 A.tf = (el) => { S.ui.taskFilter[el.dataset.k] = el.dataset.k === "mine" ? !!el.dataset.v : el.dataset.v; render(); };
@@ -1413,13 +1419,13 @@ F.saveClient = async (d) => {
 /* ---------------- Team ---------------- */
 VIEWS.team = () => {
   const act = activeCases();
-  return `<div class="page-head"><div><h1>فريق العمل</h1><p>اختر اسمك من «تعمل باسم» أسفل القائمة. صفة «مدير» أو «شريك» تمنح صلاحية إسناد القضايا والاستشارات.</p></div><button class="btn gold" data-act="newLawyer">${icon("plus")}إضافة عضو</button></div>
-  ${S.data.lawyers.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الاسم</th><th>الصفة</th><th>التخصص</th><th>رقم الترخيص</th><th>قضايا جارية</th><th>الحساب</th><th></th></tr></thead><tbody>
+  return `<div class="page-head"><div><h1>فريق العمل</h1><p>كل عضو يدخل بحسابه وبريده المسجل هنا. صفة «مدير» وحدها تمنح الإسناد والمالية وإدارة الفريق والإعدادات.</p></div>${isManager() ? `<button class="btn gold" data-act="newLawyer">${icon("plus")}إضافة عضو</button>` : ""}</div>
+  ${S.data.lawyers.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الاسم</th><th>الصفة</th><th>التخصص</th><th>رقم الترخيص</th><th>قضايا جارية</th><th>الدخول</th><th></th></tr></thead><tbody>
     ${S.data.lawyers.map((l) => `<tr><td class="t"><span class="who"><span class="avatar">${esc(initials(l.name))}</span>${esc(l.name)}${l.active === false ? ' <span class="pill">موقوف</span>' : ""}</span></td><td>${esc(ROLES[l.role] || "")}</td><td>${esc(l.specialty || "—")}</td><td class="num">${esc(l.license || "—")}</td><td class="num">${act.filter((c) => c.lawyerId === l.id).length}</td>
-      <td><div class="row" style="gap:6px;flex-wrap:nowrap">${l.id === myLid() ? pill("أنت", "gold") : `<button class="btn sm" data-act="linkThis" data-id="${l.id}">${icon("user")}أعمل باسمه</button>`}${window.RAKZ_PASSWORD && l.id !== myLid() ? (l.email ? `<a class="btn sm" href="${esc(teamInviteHref(l))}" target="_blank" rel="noopener" title="إرسال دعوة الدخول عبر واتساب">${icon("wa")}دعوة</a>` : `<span class="pill warn" title="أضف بريده حتى يستطيع إنشاء حسابه">بلا بريد</span>`) : ""}</div></td>
-      <td><button class="btn sm ghost" data-act="editLawyer" data-id="${l.id}">${icon("edit")}</button></td></tr>`).join("")}</tbody></table></div>`
-  : `<div class="card">${emptyBox("team", "أضف أعضاء المكتب", "أضف الشركاء والمحامين، ثم اختر اسمك من «تعمل باسم» أسفل القائمة.", `<button class="btn gold" data-act="createMe">${icon("plus")}ابدأ بملفك أنت</button>`)}</div>`}
-  <div class="card"><h3>دعوة الفريق</h3><p class="muted" style="margin:6px 0 0">${window.RAKZ_PASSWORD ? "١) أضف العضو هنا ببريده الإلكتروني. ٢) اضغط «دعوة» لترسل له رابط المنصة عبر واتساب. ٣) يفتح الرابط ويختار «إنشاء حساب» بنفس البريد وكلمة مرور يختارها. لا يدخل المنصة إلا بريد مضاف هنا، وإيقاف العضو يمنع دخوله فورًا." : "شارك رابط المنصة مع الفريق من زر المشاركة، ويختار كل عضو اسمه من «تعمل باسم» أسفل القائمة."}</p></div>`;
+      <td><div class="row" style="gap:6px;flex-wrap:nowrap">${l.id === myLid() ? pill("أنت", "gold") : ""}${window.RAKZ_PASSWORD && isManager() && l.id !== myLid() ? (l.email ? `<a class="btn sm" href="${esc(teamInviteHref(l))}" target="_blank" rel="noopener" title="إرسال دعوة الدخول عبر واتساب">${icon("wa")}دعوة</a>` : `<span class="pill warn" title="أضف بريده حتى يستطيع إنشاء حسابه">بلا بريد</span>`) : ""}</div></td>
+      <td>${isManager() ? `<button class="btn sm ghost" data-act="editLawyer" data-id="${l.id}">${icon("edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+  : `<div class="card">${emptyBox("team", "أضف أعضاء المكتب", "ابدأ بإنشاء ملفك أنت بصفة «مدير»، ثم أضف بقية الفريق ببريدهم.", `<button class="btn gold" data-act="createMe">${icon("plus")}أنشئ ملفي مديرًا</button>`)}</div>`}
+  <div class="card"><h3>دعوة الفريق</h3><p class="muted" style="margin:6px 0 0">${window.RAKZ_PASSWORD ? "١) أضف العضو هنا ببريده الإلكتروني. ٢) اضغط «دعوة» لترسل له رابط المنصة عبر واتساب. ٣) يفتح الرابط ويختار «إنشاء حساب» بنفس البريد وكلمة مرور يختارها. لا يدخل المنصة إلا بريد مضاف هنا، وإيقاف العضو يمنع دخوله فورًا." : "شارك رابط المنصة مع الفريق من زر المشاركة، ويضغط كل عضو «هذا أنا» مرة واحدة لربط حسابه بملفه."}</p></div>`;
 };
 function teamInviteHref(l) {
   const url = location.origin + location.pathname;
@@ -1436,21 +1442,24 @@ function lawyerForm(l = {}) {
     <div class="field span2"><label for="lw-em">البريد</label><input id="lw-em" class="inp" type="email" name="email" value="${esc(l.email)}" dir="ltr">${window.RAKZ_PASSWORD ? '<span class="hint">يدخل به العضو إلى المنصة. لا يُفتح الحساب إلا لبريد مسجل هنا.</span>' : ""}</div>
     ${l.id ? `<label class="chk span2"><input type="checkbox" name="inactive" value="1" ${l.active === false ? "checked" : ""}> إيقاف العضو (لا يظهر في الإسناد)</label>${l.userId ? `<label class="chk span2"><input type="checkbox" name="unlink" value="1"> فك ربط الحساب بهذا الملف</label>` : ""}` : ""}</form>`;
 }
-A.newLawyer = () => { if (!guardWrite()) return; modal("عضو جديد", lawyerForm(), `<button class="btn primary" type="submit" form="lw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
-A.editLawyer = (el) => modal("تعديل العضو", lawyerForm(byId(S.data.lawyers, el.dataset.id)), `<button class="btn primary" type="submit" form="lw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
-A.createMe = () => { if (!guardWrite()) return; modal("أنشئ ملفك في الفريق", lawyerForm({ name: S.me.name, self: true, role: S.me.isOwner ? "partner" : "lawyer" }), `<button class="btn primary" type="submit" form="lw-form">حفظ وربط حسابي</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.newLawyer = () => { if (!guardWrite()) return; if (!isManager()) return toast("إدارة الفريق من صلاحية المدير.", true); modal("عضو جديد", lawyerForm(), `<button class="btn primary" type="submit" form="lw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.editLawyer = (el) => isManager() ? modal("تعديل العضو", lawyerForm(byId(S.data.lawyers, el.dataset.id)), `<button class="btn primary" type="submit" form="lw-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`) : toast("إدارة الفريق من صلاحية المدير.", true);
+A.createMe = () => { if (!guardWrite()) return; if (S.data.lawyers.length && !isManager()) return toast("يضيفك المدير إلى فريق العمل.", true); modal("أنشئ ملفك في الفريق", lawyerForm({ name: S.me.name, email: S.me.email, self: true, role: "manager" }), `<button class="btn primary" type="submit" form="lw-form">حفظ وربط حسابي</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.saveLawyer = async (d) => {
-  const data = { name: d.name.trim(), role: d.role, specialty: d.specialty, license: d.license, phone: d.phone, email: d.email };
+  const first = !S.data.lawyers.length;
+  if (!first && !isManager()) return toast("إدارة الفريق من صلاحية المدير.", true);
+  const data = { name: d.name.trim(), role: first ? "manager" : d.role, specialty: d.specialty, license: d.license, phone: d.phone, email: (d.email || "").trim().toLowerCase() };
+  if (window.RAKZ_PASSWORD && !data.email) return toast("البريد مطلوب: به يدخل العضو إلى المنصة.", true);
+  if (d.id && d.id === myLid() && data.role !== "manager" && !S.data.lawyers.some((l) => l.id !== d.id && l.role === "manager" && l.active !== false)) return toast("لا يمكن إزالة صفة المدير عن آخر مدير.", true);
   if (d.id) { data.active = d.inactive !== "1"; if (d.unlink === "1") data.userId = ""; await upd(`lawyers/${d.id}`, data); }
-  else { const nid = await add("lawyers", { ...data, active: true, userId: "" }); if (d.self || !myLid()) { S.ui.asLid = nid; lsSet("as", nid); } }
+  else await add("lawyers", { ...data, active: true, userId: d.self && !window.RAKZ_PASSWORD ? S.me.id : "" });
   closeModal(); toast("حُفظ");
 };
-A.linkThis = (el) => { S.ui.asLid = el.dataset.id; lsSet("as", el.dataset.id); render(); toast(`تعمل الآن باسم ${lawyerName(el.dataset.id)}`); };
 A.linkMe = async () => { const id = $("#link-sel")?.value; if (id) { await upd(`lawyers/${id}`, { userId: S.me.id }); toast("رُبط حسابك بملفك"); } };
 
 /* ---------------- Settings ---------------- */
 VIEWS.settings = () => {
-  const f = S.firm; const ro = false;
+  const f = S.firm; const ro = !isManager();
   const fld = (k, label, cls = "") => `<div class="field ${cls}"><label for="st-${k}">${label}</label><input id="st-${k}" class="inp" name="${k}" value="${esc(f[k])}" ${ro ? "disabled" : ""}></div>`;
   return `<div class="page-head"><div><h1>الإعدادات</h1><p>بيانات المكتب تظهر في ترويسة العقود وعروض الأتعاب واللوائح.</p></div></div>
   ${ro ? `<div class="banner warn"><div class="grow">تعديل الإعدادات متاح للشريك المدير وأصحاب صلاحية التحرير الكاملة.</div></div>` : ""}
@@ -2271,13 +2280,14 @@ VIEWS.drafting = () => {
   const tab = S.route.tab || "home";
   const docs = [...S.data.docs].sort((a, b) => (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || ""));
   const head = `<div class="page-head"><div><h1>الصياغة</h1><p>عقود من النموذج الأساسي، عروض أتعاب، ولوائح وردود ${S.caps.sample ? "يكتبها المساعد من ملف القضية" : "بهياكلها النظامية"}.</p></div></div>
-    <div class="tabs">${[["home", "إنشاء"], ["pleading", "اللوائح والردود"], ["contract", "العقود"], ["proposal", "عروض الأتعاب"], ["all", "كل المستندات", docs.length]].map(([k, t, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${t}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>`;
+    <div class="tabs">${[["home", "إنشاء"], ["pleading", "اللوائح والردود"], ...(isManager() ? [["contract", "العقود"], ["proposal", "عروض الأتعاب"]] : []), ["all", "كل المستندات", docs.length]].map(([k, t, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${t}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>`;
   if (tab === "home") return head + `<div class="gen-grid">
       <button class="card gen" data-act="tab" data-tab="pleading"><span class="ic">${icon("scale")}</span><b>لائحة أو رد</b><span>صحيفة دعوى، مذكرة جوابية، استئناف، نقض، التماس… ${S.caps.sample ? "يكتبها المساعد من وقائع القضية ومرفقاتها." : "بهيكلها النظامي وبيانات القضية جاهزة للتعبئة."}</span></button>
-      <button class="card gen" data-act="tab" data-tab="contract"><span class="ic">${icon("contract")}</span><b>عقد خدمات قانونية</b><span>من النموذج الأساسي للمكتب، تُملأ بياناته تلقائيًا من العميل والقضية.</span></button>
-      <button class="card gen" data-act="tab" data-tab="proposal"><span class="ic">${icon("coin")}</span><b>عرض أتعاب</b><span>بنود الخدمات والمبالغ والضريبة وشروط السداد بترويسة المكتب.</span></button></div>
+      ${isManager() ? `<button class="card gen" data-act="tab" data-tab="contract"><span class="ic">${icon("contract")}</span><b>عقد خدمات قانونية</b><span>من النموذج الأساسي للمكتب، تُملأ بياناته تلقائيًا من العميل والقضية.</span></button>` : ""}
+      ${isManager() ? `<button class="card gen" data-act="tab" data-tab="proposal"><span class="ic">${icon("coin")}</span><b>عرض أتعاب</b><span>بنود الخدمات والمبالغ والضريبة وشروط السداد بترويسة المكتب.</span></button>` : ""}</div>
     <div class="card"><div class="card-h"><h3>آخر المستندات</h3></div>${docs.length ? `<div class="list">${docs.slice(0, 8).map(docRow).join("")}</div>` : emptyBox("docs", "لم تُنشأ مستندات بعد", "")}</div>`;
   if (tab === "all") return head + `<div class="card">${docs.length ? `<div class="list">${docs.map(docRow).join("")}</div>` : emptyBox("docs", "لا مستندات", "")}</div>`;
+  if ((tab === "contract" || tab === "proposal") && !isManager()) return head + `<div class="card">${emptyBox("coin", "العقود وعروض الأتعاب من صلاحية المدير", "")}</div>`;
   return head + GEN_FORMS[tab]();
 };
 const dv = (k, d = "") => S.drafts[k] ?? d;
@@ -2691,6 +2701,7 @@ const payTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tb
 const expTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>المصروف</th><th>القضية</th><th>المبلغ</th><th>على العميل</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t">${esc(x.category || "")}${x.desc ? " — " + esc(x.desc) : ""}</div><div class="ref">${fmtDate(x.date)}</div></td><td data-label="القضية">${esc(caseById(x.caseId)?.title || "—")}</td><td data-label="المبلغ" class="num">${money(x.amount)}</td><td data-label="على العميل">${x.billable ? pill("نعم", "gold") : pill("لا", "plain")}</td><td data-noact="1"><button class="btn sm ghost" data-act="editFin" data-id="${x.id}">${icon("edit")}</button></td></tr>`).join("")}</tbody></table></div>` : "";
 
 VIEWS.finance = () => {
+  if (!isManager()) return `<div class="card">${emptyBox("coin", "المالية من صلاحية المدير", "يطّلع على المطالبات والمدفوعات والمصروفات من صفته «مدير» فقط.")}</div>`;
   const tab = S.route.tab || "invoices"; const t = finTotals();
   const agreed = S.data.cases.filter((c) => c.status !== "closed").reduce((s, c) => s + num(c.fee), 0) + S.data.consults.filter((c) => c.status !== "done").reduce((s, c) => s + num(c.fee), 0);
   const invs = [...fin("invoice")].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -2734,7 +2745,7 @@ function invoiceForm(x = {}) {
     <div class="field span2"><label for="iv-note">ملاحظات</label><input id="iv-note" class="inp" name="note" value="${esc(x.note)}"></div>
     ${x.id ? `<label class="chk span2"><input type="checkbox" name="void" value="1" ${x.status === "void" ? "checked" : ""}> إلغاء المطالبة</label>` : ""}</form>`;
 }
-A.newInvoice = (el) => { if (!guardWrite()) return; modal("مطالبة مالية جديدة", invoiceForm({ caseId: el.dataset.case || "", consultId: el.dataset.consult || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.newInvoice = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); modal("مطالبة مالية جديدة", invoiceForm({ caseId: el.dataset.case || "", consultId: el.dataset.consult || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.saveInvoice = async (d) => {
   const amount = num(d.amount); const vat = Number(d.vat) || 0; const total = Math.round(amount * (1 + vat / 100) * 100) / 100;
   const data = { type: "invoice", clientId: d.clientId, caseId: d.caseId, consultId: d.consultId, desc: d.desc, amount, vat: d.vat, vatAmount: total - amount, total, date: d.date, due: d.due, note: d.note };
@@ -2754,7 +2765,7 @@ function paymentForm(x = {}) {
     <div class="field"><label for="pm-ref">المرجع</label><input id="pm-ref" class="inp" name="ref" value="${esc(x.ref)}" placeholder="رقم الحوالة أو الشيك"></div>
     ${x.id ? `<label class="chk span2"><input type="checkbox" name="remove" value="1"> حذف هذه الدفعة</label>` : ""}</form>`;
 }
-A.newPayment = (el) => { if (!guardWrite()) return; modal("تسجيل دفعة", paymentForm({ invoiceId: el.dataset.inv || "", caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.newPayment = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); modal("تسجيل دفعة", paymentForm({ invoiceId: el.dataset.inv || "", caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.savePayment = async (d) => {
   const inv = byId(S.data.finance, d.invoiceId);
   const data = { type: "payment", invoiceId: d.invoiceId, clientId: d.clientId || inv?.clientId || "", caseId: d.caseId || inv?.caseId || "", amount: num(d.amount), date: d.date, method: d.method, ref: d.ref };
@@ -2773,7 +2784,7 @@ function expenseForm(x = {}) {
     <label class="chk span2"><input type="checkbox" name="billable" value="1" ${x.billable !== false ? "checked" : ""}> يُحمَّل على العميل</label>
     ${x.id ? `<label class="chk span2"><input type="checkbox" name="remove" value="1"> حذف هذا المصروف</label>` : ""}</form>`;
 }
-A.newExpense = (el) => { if (!guardWrite()) return; modal("مصروف", expenseForm({ caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.newExpense = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); modal("مصروف", expenseForm({ caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.saveExpense = async (d) => {
   const data = { type: "expense", caseId: d.caseId, clientId: caseById(d.caseId)?.clientId || "", category: d.category, amount: num(d.amount), date: d.date, desc: d.desc, billable: d.billable === "1" };
   if (d.id && d.remove === "1") await del(`finance/${d.id}`);
@@ -2844,7 +2855,7 @@ function consultForm(x = {}) {
     <div class="field span2"><label for="cs-sub">الموضوع</label><input id="cs-sub" class="inp" name="subject" required value="${esc(x.subject)}" placeholder="مثال: مدى نظامية فصل موظف خلال فترة التجربة"></div>
     <div class="field"><label for="cs-field">المجال</label><select id="cs-field" class="inp" name="field">${CASE_TYPES.map((t) => opt(t, t, x.field)).join("")}</select></div>
     <div class="field"><label for="cs-due">موعد التسليم</label><input id="cs-due" class="inp" type="date" name="due" value="${esc(x.due || ymd(new Date(Date.now() + 3 * 864e5)))}"></div>
-    <div class="field"><label for="cs-fee">الأتعاب (ر.س)</label><input id="cs-fee" class="inp num" name="fee" inputmode="decimal" value="${esc(x.fee)}"></div>
+    ${isManager() ? `<div class="field"><label for="cs-fee">الأتعاب (ر.س)</label><input id="cs-fee" class="inp num" name="fee" inputmode="decimal" value="${esc(x.fee)}"></div>` : ""}
     ${isManager() ? `<div class="field"><label for="cs-law">المستشار المسؤول</label><select id="cs-law" class="inp" name="lawyerId">${lawyerOpts(x.lawyerId, "— لاحقًا —")}</select></div>` : `<div class="field"><span class="hint">يسند المدير الاستشارة إلى المستشار المناسب.</span></div>`}
     <div class="field span2"><label for="cs-q">سؤال العميل ووقائعه</label><textarea id="cs-q" class="inp" name="question" rows="6" required>${esc(x.question)}</textarea></div></form>`;
 }
@@ -2853,7 +2864,7 @@ A.editConsult = (el) => modal("تعديل الاستشارة", consultForm(byId(
 F.saveConsult = async (d) => {
   let clientId = d.clientId;
   if (!clientId && d.prospect.trim()) clientId = await add("clients", { name: d.prospect.trim(), phone: d.phone, kind: "individual" });
-  const data = { clientId: clientId || "", prospect: d.prospect, phone: d.phone, type: d.type, subject: d.subject.trim(), field: d.field, due: d.due, fee: num(d.fee) || "", question: d.question };
+  const data = { clientId: clientId || "", prospect: d.prospect, phone: d.phone, type: d.type, subject: d.subject.trim(), field: d.field, due: d.due, fee: isManager() ? num(d.fee) || "" : (byId(S.data.consults, d.id)?.fee ?? ""), question: d.question };
   if (isManager() && d.lawyerId !== undefined) data.lawyerId = d.lawyerId;
   if (d.id) { await upd(`consults/${d.id}`, data); closeModal(); toast("حُفظت"); return; }
   const no = `RK-Q-${new Date().getFullYear()}-${String(S.data.consults.length + 1).padStart(3, "0")}`;
@@ -2870,7 +2881,7 @@ VIEWS.consult = () => {
   <div class="case-head"><div class="row" style="align-items:flex-start"><div class="grow"><h1>${esc(x.subject)}</h1><div class="row small muted" style="margin-top:4px">${pill(CONSULT_STATUS[x.status]?.t, CONSULT_STATUS[x.status]?.c)}<span>${esc(x.type || "")}</span><span>${esc(x.field || "")}</span>${x.due ? `<span>التسليم ${fmtDate(x.due)}</span>${x.status !== "done" ? countdown(x.due) : ""}` : ""}</div></div>
     <div class="row"><button class="btn" data-act="editConsult" data-id="${x.id}">${icon("edit")}تعديل</button><select class="inp" style="width:auto" data-ch="consultStatus" data-id="${x.id}" aria-label="الحالة">${Object.entries(CONSULT_STATUS).map(([k, v]) => opt(k, v.t, x.status)).join("")}</select></div></div>
     <div class="facts"><div class="fact"><div class="k">العميل</div><div class="v">${esc(x.clientId ? clientName(x.clientId) : x.prospect || "—")}</div></div><div class="fact"><div class="k">الجوال</div><div class="v num">${esc(phone || "—")}</div></div>
-      <div class="fact"><div class="k">المستشار</div><div class="v">${x.lawyerId ? esc(lawyerName(x.lawyerId)) : isManager() ? `<a data-act="editConsult" data-id="${x.id}" style="cursor:pointer">إسناد</a>` : "بانتظار إسناد المدير"}</div></div><div class="fact"><div class="k">الأتعاب</div><div class="v num">${x.fee ? money(x.fee) + " ر.س" : "—"}</div></div></div></div>
+      <div class="fact"><div class="k">المستشار</div><div class="v">${x.lawyerId ? esc(lawyerName(x.lawyerId)) : isManager() ? `<a data-act="editConsult" data-id="${x.id}" style="cursor:pointer">إسناد</a>` : "بانتظار إسناد المدير"}</div></div>${isManager() ? `<div class="fact"><div class="k">الأتعاب</div><div class="v num">${x.fee ? money(x.fee) + " ر.س" : "—"}</div></div>` : ""}</div></div>
   <div class="cols"><div class="stack">
     <div class="card"><div class="card-h"><h3>الرأي القانوني</h3><div class="row">${gen ? `<span class="thinking small">يكتب المساعد…</span><button class="btn sm" data-act="stopGen">إيقاف</button>` : S.caps.sample ? `<button class="btn sm gold" data-act="genOpinion" data-id="${x.id}">${icon("spark")}${ans ? "إعادة الصياغة" : "صياغة المسودة"}</button>` : ans ? "" : `<button class="btn sm gold" data-act="opinionTemplate" data-id="${x.id}">${icon("docs")}أدرج هيكل الرأي</button>`}</div></div>
       <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" data-live="csLive" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
@@ -2879,7 +2890,7 @@ VIEWS.consult = () => {
     <div class="stack"><div class="card"><div class="card-h"><h3>السؤال والوقائع</h3></div><div class="prose">${esc(x.question || "")}</div></div>
       <div class="card"><div class="card-h"><h3>إجراءات</h3></div><div class="stack" style="gap:8px">
         ${x.caseId ? `<button class="btn" data-act="openCase" data-id="${x.caseId}">${icon("cases")}فتح القضية المرتبطة</button>` : `<button class="btn" data-act="consultToCase" data-id="${x.id}">${icon("cases")}تحويل إلى قضية</button>`}
-        <button class="btn" data-act="newInvoice" data-consult="${x.id}">${icon("receipt")}مطالبة بالأتعاب</button>
+        ${isManager() ? `<button class="btn" data-act="newInvoice" data-consult="${x.id}">${icon("receipt")}مطالبة بالأتعاب</button>` : ""}
         <button class="btn danger" data-act="deleteConsult" data-id="${x.id}">${icon("trash")}حذف</button></div></div></div></div>`;
 };
 CH.csLive = () => { const a = $("#cs-wa"); const x = byId(S.data.consults, S.route.id); if (a && x) a.href = waHref(x.phone || byId(S.data.clients, x.clientId)?.phone, $("#cs-answer").value); };
@@ -2985,7 +2996,6 @@ const _render = render;
 render = function () { _render(); bindDrop(); };
 
 async function boot() {
-  S.ui.asLid = lsGet("as", "");
   setTheme(lsGet("theme", "light"));
   const h = (location.hash || "").replace("#", "");
   if (VIEWS[h] && !["case", "doc"].includes(h)) S.route.name = h;
@@ -2995,7 +3005,7 @@ async function boot() {
   S.caps = { db, user, sample, assets, downloads };
   if (user) {
     const me = await user.me();
-    S.me = { id: me.id, name: me.name || "", avatar: me.avatarUrl, isOwner: me.isOwner, canEdit: me.canEdit, canWrite: await user.can("data.write") };
+    S.me = { id: me.id, name: me.name || "", email: me.email || "", avatar: me.avatarUrl, isOwner: me.isOwner, canEdit: me.canEdit, canWrite: await user.can("data.write") };
   }
   S.booted = true;
   if (db) subscribeAll(); else COLL.forEach((c) => (S.loaded[c] = true));
