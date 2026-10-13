@@ -424,9 +424,11 @@ F.genPleading = async (d) => {
   const T = PLEADING_TYPES[d.type];
   const target = d.fileId ? byId(S.caseFiles, d.fileId) : null;
   const files = S.caseFiles.filter((f) => f.analysis).map((f) => `• ${f.name}: ${f.analysis.summary}`).join("\n");
+  const laws = await lawContext([T.t, c.type, c.court, c.title, c.description, d.instructions, (target?.text || "").slice(0, 1500)].join(" "), 10);
   const prompt = `أنت محامٍ سعودي متمرس في «${S.firm.nameAr}». اكتب «${T.t}» كاملة وجاهزة للتقديم، وفق نظام المرافعات الشرعية ولوائحه وأعراف الصياغة القضائية في المملكة العربية السعودية.
 تاريخ اليوم: ${todayStr()} الموافق ${fmtHijri(todayStr())}.
 ${caseContext(c)}
+${laws}
 ${files ? `\nخلاصة مرفقات القضية:\n${files}` : ""}
 ${target ? `\nالمستند المطلوب الرد عليه/الاعتراض عليه («${target.name}»):\n"""\n${(target.text || target.analysis?.summary || "").slice(0, 40000)}\n"""` : ""}
 ${d.instructions ? `\nتوجيهات المحامي:\n${d.instructions}` : ""}

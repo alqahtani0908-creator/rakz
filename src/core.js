@@ -218,6 +218,7 @@ function renderSide() {
       ${n("consults", "الاستشارات", "chat", S.data.consults.filter((x) => x.status !== "done" && (!myLid() || x.lawyerId === myLid())).length || "")}
       <div class="nav-sec">الصياغة</div>
       ${n("drafting", "العقود واللوائح والعروض", "docs")}
+      ${window.RAKZ_LAWS ? n("laws", "المكتبة النظامية", "scale") : ""}
       <div class="nav-sec">الإدارة</div>
       ${n("finance", "المالية", "coin")}
       ${n("clients", "العملاء", "clients")}

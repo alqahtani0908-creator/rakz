@@ -152,12 +152,15 @@ async function analyzeFile(caseId, fileId, fileObj) {
       }
       if (!text && !images.length) { delete S.analyzing[fileId]; scheduleRender(); return toast("لا يحتوي الملف على نص قابل للقراءة.", true); }
     }
+    setBusy("يبحث في المكتبة النظامية…");
+    const laws = await lawContext([c.type, c.court, f.category, c.title, (text || "").slice(0, 2000)].join(" "));
     setBusy("يحلل المحتوى…");
     const prompt = `أنت محامٍ سعودي خبير في مكتب «ركز النظامية للمحاماة». حلّل المستند المرفق في سياق القضية، واستخرج كل ما يلزم لإدارة القضية.
 تاريخ اليوم: ${todayStr()} (${fmtHijri(todayStr())}).
 ${caseContext(c)}
 
 ${JURIS_GUIDE}
+${laws}
 
 اسم الملف: ${f.name} — تصنيفه المبدئي: ${f.category || "—"}
 ${text ? `نص المستند:\n"""\n${text.slice(0, 55000)}\n"""` : "المستند مرفق كصور لصفحاته (ممسوح ضوئيًا). اقرأه بعناية."}
@@ -207,11 +210,13 @@ A.caseBrief = async (el) => {
   const files = S.caseFiles.map((f) => `• ${f.name} (${f.category || ""}، رُفع ${fmtDate((f.at || "").slice(0, 10))})${f.analysis ? `\n  النوع: ${f.analysis.docType || ""}\n  الخلاصة: ${f.analysis.summary || ""}\n  أهم النقاط: ${(f.analysis.keyPoints || []).join("؛ ")}` : f.text ? `\n  مقتطف: ${f.text.slice(0, 1500)}` : ""}`).join("\n");
   const log = [...S.caseLog].reverse().slice(-80).map((e) => `- ${(e.at || "").slice(0, 10)}: ${e.text}`).join("\n");
   const tasks = S.data.tasks.filter((t) => t.caseId === c.id).map((t) => `- [${t.status === "done" ? "منجز" : "مفتوح"}] ${TASK_KINDS[t.kind]?.t}: ${t.title} ${t.due ? "(" + t.due + ")" : ""}`).join("\n");
+  const laws = await lawContext([c.type, c.court, c.title, c.description, ...S.caseFiles.map((f) => f.analysis?.summary || "")].join(" "), 10);
   const prompt = `أنت شريك أول في مكتب «ركز النظامية للمحاماة» بالرياض. اكتب قراءة مهنية لمجريات القضية التالية لمساعدة المحامي المسؤول.
 تاريخ اليوم: ${todayStr()} (${fmtHijri(todayStr())}).
 ${caseContext(c)}
 
 ${JURIS_GUIDE}
+${laws}
 
 المرفقات وتحليلاتها:
 ${files || "لا توجد مرفقات."}

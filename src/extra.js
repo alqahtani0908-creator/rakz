@@ -376,6 +376,7 @@ A.saveAnswer = async (el) => { const x = byId(S.data.consults, el.dataset.id); a
 A.genOpinion = async (el) => {
   if (!needSample()) return;
   const x = byId(S.data.consults, el.dataset.id);
+  const laws = await lawContext([x.field, x.subject, x.question].join(" "), 10);
   const prompt = `أنت مستشار قانوني سعودي أول في «${S.firm.nameAr}». اكتب مذكرة رأي قانوني مهنية ردًا على الاستشارة التالية، وفق الأنظمة السارية في المملكة العربية السعودية.
 تاريخ اليوم: ${todayStr()} الموافق ${fmtHijri(todayStr())}.
 نوع الاستشارة: ${x.type} — المجال: ${x.field}
@@ -385,6 +386,7 @@ A.genOpinion = async (el) => {
 ${x.question}
 """
 ${JURIS_GUIDE}
+${laws}
 
 الهيكل والصيغة (عناوين تبدأ بـ "## "، قوائم مرقمة "1. "، نقاط "- "، بلا ** ولا ###):
 > بسم الله الرحمن الرحيم
