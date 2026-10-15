@@ -169,12 +169,16 @@ async function buildDocx(title, body) {
 }
 
 /* ---------- PDF: the browser's own print engine renders Arabic perfectly, so a document is laid out
-   on A4 in a hidden frame and handed to «Print → Save as PDF» (on iPhone: Share → Save to Files). ---------- */
-const PRINT_CSS = `@page { size: A4; margin: 16mm 18mm 18mm; @bottom-center { content: counter(page) " / " counter(pages); font: 9pt "IBM Plex Sans Arabic", sans-serif; color: #8a8f99; } }
+   on A4 in a hidden frame and handed to «Print → Save as PDF» (on iPhone: Share → Save to Files).
+   The letterhead and the contact footer sit in a table's thead/tfoot, which print engines repeat on every page. ---------- */
+const PRINT_CSS = `@page { size: A4; margin: 10mm 18mm 12mm; @bottom-center { content: "صفحة " counter(page) " من " counter(pages); font: 9pt "IBM Plex Sans Arabic", sans-serif; color: #8a8f99; } }
 * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 html, body { margin: 0; background: #fff; }
 body { font-family: "Noto Naskh Arabic", "Traditional Arabic", serif; font-size: 13pt; line-height: 1.95; color: #1b2433; direction: rtl; }
-.lh { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #A3836B; padding-bottom: 8px; margin-bottom: 20px; }
+table.page { width: 100%; border-collapse: collapse; table-layout: auto; margin: 0; }
+table.page > thead { display: table-header-group; } table.page > tfoot { display: table-footer-group; }
+table.page > * > tr > td { border: 0; padding: 0; } table.page > tbody > tr { break-inside: auto; }
+.lh { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #A3836B; padding-bottom: 8px; margin-bottom: 18px; }
 .lh img.w { height: 44px; } .lh img.m { height: 56px; }
 h1 { text-align: center; font-size: 18pt; color: #152335; border-bottom: 1.5px solid #A3836B; padding-bottom: 6px; margin: 6px auto 18px; width: fit-content; max-width: 100%; }
 h2 { font-size: 14pt; color: #152335; margin: 16px 0 4px; break-after: avoid; }
@@ -187,13 +191,15 @@ table.plain td { border: 0; text-align: center; padding: 2px 8px; } table.plain 
 table.plain { break-inside: avoid; margin-top: 18px; }
 hr { border: 0; border-top: 1px solid #d8cfc6; margin: 12px 0; }
 mark { background: none; color: inherit; }
-.ft { border-top: 1px solid #e5ddd5; margin-top: 26px; padding-top: 6px; font: 8.5pt "IBM Plex Sans Arabic", sans-serif; color: #6b7280; text-align: center; }`;
+.ft { border-top: 1px solid #e5ddd5; margin-top: 14px; padding-top: 6px; font: 8.5pt "IBM Plex Sans Arabic", sans-serif; color: #6b7280; text-align: center; }`;
 function printHtml(title, body) {
   const f = S.firm;
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&family=Noto+Naskh+Arabic:wght@400;600;700&display=block">
-<style>${PRINT_CSS}</style></head><body><div class="lh"><img class="w" src="${LOGO.textLight}" alt=""><img class="m" src="${LOGO.iconLight}" alt=""></div>
-${blocksHtml(parseBlocks(body))}<div class="ft">${esc([f.nameAr, f.cr ? "س.ت " + f.cr : "", f.address || f.city, f.phone, f.email, f.website].filter(Boolean).join("  |  "))}</div></body></html>`;
+<style>${PRINT_CSS}</style></head><body><table class="page">
+<thead><tr><td><div class="lh"><img class="w" src="${LOGO.textLight}" alt=""><img class="m" src="${LOGO.iconLight}" alt=""></div></td></tr></thead>
+<tfoot><tr><td><div class="ft">${esc([f.nameAr, f.cr ? "س.ت " + f.cr : "", f.address || f.city, f.phone, f.email, f.website].filter(Boolean).join("  |  "))}</div></td></tr></tfoot>
+<tbody><tr><td>${blocksHtml(parseBlocks(body))}</td></tr></tbody></table></body></html>`;
 }
 async function exportPdf(title, body) {
   document.getElementById("pdf-frame")?.remove();
