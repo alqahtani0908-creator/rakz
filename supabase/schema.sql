@@ -73,3 +73,36 @@ create policy "members delete files" on storage.objects for delete to authentica
 -- assigns work, handles finance (finance rows, fees, fee proposals, invoices, contracts), manages the
 -- team and settings. Applied as migration "governance_roles"; see that migration for the full SQL
 -- (functions my_lawyer, is_manager, my_lawyer_id, no_manager_yet, manager_only, trigger guard_documents).
+
+-- ---------- 2026-10-15: law library hierarchy + manager-only finance files ----------
+alter table public.law_sources add column if not exists parent text, add column if not exists kind text not null default 'نظام', add column if not exists ord integer, add column if not exists status text;
+
+drop function if exists public.search_laws(text, integer, text);
+create function public.search_laws(p_q text, p_k integer default 8, p_law text default null)
+returns table(law_slug text, law_name text, article text, num integer, body text, rank real, kind text, parent_name text, status text)
+language sql stable set search_path to 'public' as $$
+  with query as (
+    select to_tsquery('arabic', array_to_string(tsvector_to_array(to_tsvector('arabic', coalesce(p_q, ''))), ' | ')) as tq
+  )
+  select a.law_slug, a.law, a.article, a.num, a.body, ts_rank_cd(a.tsv, query.tq) as rank, s.kind, p.name, s.status
+  from public.law_articles a cross join query
+  left join public.law_sources s on s.slug = a.law_slug
+  left join public.law_sources p on p.slug = s.parent
+  where numnode(query.tq) > 0 and a.tsv @@ query.tq
+    and (p_law is null or a.law_slug = p_law or s.parent = p_law)
+  order by rank desc
+  limit least(greatest(p_k, 1), 30);
+$$;
+revoke all on function public.search_laws(text, integer, text) from public, anon;
+grant execute on function public.search_laws(text, integer, text) to authenticated;
+
+-- Payment receipts live under finance/ in the files bucket: managers only.
+drop policy if exists "members read files" on storage.objects;
+drop policy if exists "members upload files" on storage.objects;
+drop policy if exists "members delete files" on storage.objects;
+create policy "members read files" on storage.objects for select to authenticated
+  using (bucket_id = 'files' and public.is_member() and (name not like 'finance/%' or public.is_manager()));
+create policy "members upload files" on storage.objects for insert to authenticated
+  with check (bucket_id = 'files' and public.is_member() and (name not like 'finance/%' or public.is_manager()));
+create policy "members delete files" on storage.objects for delete to authenticated
+  using (bucket_id = 'files' and public.is_member() and (name not like 'finance/%' or public.is_manager()));

@@ -9,7 +9,7 @@ src = root / "src"
 read = lambda p: p.read_text(encoding="utf-8")
 def uri(name): return "data:image/png;base64," + base64.b64encode((root / "assets" / name).read_bytes()).decode()
 
-js = "\n".join(read(src / f) for f in ["core.js", "views.js", "ai.js", "laws.js", "docengine.js", "docs.js", "extra.js", "accounting.js", "main.js"])
+js = "\n".join(read(src / f) for f in ["core.js", "views.js", "ai.js", "laws.js", "docengine.js", "docs.js", "extra.js", "accounting.js", "comms.js", "main.js"])
 for k, f in {"__ICON_LIGHT__": "icon_light.png", "__ICON_DARK__": "icon_dark.png", "__TEXT_LIGHT__": "text_light.png", "__TEXT_DARK__": "text_dark.png"}.items():
     js = js.replace(k, uri(f))
 fonts = """<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

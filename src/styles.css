@@ -381,3 +381,4 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .client-box h4 { margin: 0; font-size: 14px; color: var(--accent-ink); }
 .req::after { content: " *"; color: var(--bad); }
 @media (max-width: 860px) { .paper { padding: 20px 18px; font-size: 14.5px; } }
+.tbl tr.law-child td { background: var(--surface-2); } .tbl tr.law-child .t { font-weight: 500; }

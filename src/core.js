@@ -93,6 +93,7 @@ const lsSet = (k, v) => { try { localStorage.setItem("rakz:" + k, JSON.stringify
 
 /* ---------- icons ---------- */
 const IC = {
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
   dash: '<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
   cases: '<path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3"/><path d="M4 12h16"/>',
   tasks: '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11"/>',
@@ -199,6 +200,7 @@ function render() {
   const r = S.route;
   const keep = r.name === "case" ? r.id : r.name === "drafting" ? S.drafts["pl.case"] : null;
   if (keep) subscribeCase(keep); else if (S.caseLoadedFor) { S.caseSub?.forEach((u) => u()); S.caseSub = null; S.caseLoadedFor = null; }
+  if (r.name !== "consult" && S.csFor) { S.csUnsub?.(); S.csUnsub = null; S.csFor = null; S.csFiles = []; }
   renderSide();
   const v = VIEWS[r.name] || VIEWS.dashboard;
   const scrollY = window.scrollY;

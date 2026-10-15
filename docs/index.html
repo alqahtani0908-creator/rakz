@@ -156,7 +156,7 @@
   /* ---------- assets ---------- */
   const assets = {
     async upload(blob, opts = {}) {
-      const id = newId() + newId().slice(0, 12); const type = opts.type || blob.type || "application/octet-stream";
+      const id = (opts.folder ? opts.folder.replace(/[^a-z0-9_-]/gi, "") + "/" : "") + newId() + newId().slice(0, 12); const type = opts.type || blob.type || "application/octet-stream";
       const { error } = await sb.storage.from("files").upload(id, blob, { contentType: type, upsert: false });
       if (error) throw err(/size|large/i.test(error.message) ? "too_large" : "upstream_error", error.message);
       return { id, url: await assets.signedUrl(id), sizeBytes: blob.size, contentType: type };
@@ -168,7 +168,7 @@
 
   /* ---------- law library (tables law_sources / law_articles, RPC search_laws) ---------- */
   if (sb) window.RAKZ_LAWS = {
-    async list() { const { data, error } = await sb.from("law_sources").select("*").order("name"); if (error) throw error; return data || []; },
+    async list() { const { data, error } = await sb.from("law_sources").select("*").order("ord", { nullsFirst: false }).order("name"); if (error) throw error; return data || []; },
     async articles(slug) { const { data, error } = await sb.from("law_articles").select("article,num,body").eq("law_slug", slug).order("num").limit(3000); if (error) throw error; return data || []; },
     async search(q, k = 8, law = null) { const { data, error } = await sb.rpc("search_laws", { p_q: q, p_k: k, p_law: law }); if (error) throw error; return data || []; },
     async save(src, articles) {
@@ -632,6 +632,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .client-box h4 { margin: 0; font-size: 14px; color: var(--accent-ink); }
 .req::after { content: " *"; color: var(--bad); }
 @media (max-width: 860px) { .paper { padding: 20px 18px; font-size: 14.5px; } }
+.tbl tr.law-child td { background: var(--surface-2); } .tbl tr.law-child .t { font-weight: 500; }
 
 </style>
 <div id="app" dir="rtl" lang="ar">
@@ -737,6 +738,7 @@ const lsSet = (k, v) => { try { localStorage.setItem("rakz:" + k, JSON.stringify
 
 /* ---------- icons ---------- */
 const IC = {
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
   dash: '<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
   cases: '<path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3"/><path d="M4 12h16"/>',
   tasks: '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11"/>',
@@ -843,6 +845,7 @@ function render() {
   const r = S.route;
   const keep = r.name === "case" ? r.id : r.name === "drafting" ? S.drafts["pl.case"] : null;
   if (keep) subscribeCase(keep); else if (S.caseLoadedFor) { S.caseSub?.forEach((u) => u()); S.caseSub = null; S.caseLoadedFor = null; }
+  if (r.name !== "consult" && S.csFor) { S.csUnsub?.(); S.csUnsub = null; S.csFor = null; S.csFiles = []; }
   renderSide();
   const v = VIEWS[r.name] || VIEWS.dashboard;
   const scrollY = window.scrollY;
@@ -1562,13 +1565,13 @@ async function fetchOriginal(f) {
   return new File([await r.blob()], f.name, { type: f.mime });
 }
 A.viewFile = async (el) => {
-  const f = byId(S.caseFiles, el.dataset.id); if (!f) return;
+  const f = anyFile(el.dataset.id); if (!f) return;
   const src = await assetSrc(f.assetId);
   const body = f.mime?.startsWith("image/") ? `<img src="${src}" alt="${esc(f.name)}" style="max-width:100%">` : f.mime === "application/pdf" ? `<iframe src="${src}" title="${esc(f.name)}"></iframe>` : f.text ? `<div class="paper" style="min-height:auto;white-space:pre-wrap">${esc(f.text)}</div>` : `<p>لا تتوفر معاينة لهذا النوع. استخدم «تنزيل».</p>`;
   modal(esc(f.name), body, `<button class="btn primary" data-act="downloadFile" data-id="${f.id}">${icon("download")}تنزيل</button><button class="btn ghost" data-act="closeModal">إغلاق</button>`, true);
 };
 A.downloadFile = async (el) => {
-  const f = byId(S.caseFiles, el.dataset.id);
+  const f = anyFile(el.dataset.id); if (!f) return;
   if (!S.caps.downloads) return toast("التنزيل غير متاح في هذا العرض.", true);
   try { const file = await fetchOriginal(f); await S.caps.downloads.save({ filename: f.name, data: file }); }
   catch (e) { if (e?.code !== "declined") toast(e?.code === "rejected_extension" ? "هذا النوع من الملفات لا يمكن تنزيله من المنصة." : "تعذّر التنزيل.", true); }
@@ -1758,14 +1761,15 @@ function splitArticles(text) {
 const slugify = (name) => "law-" + Array.from(new TextEncoder().encode(name)).reduce((h, b) => (h * 31 + b) >>> 0, 7).toString(36);
 
 /* Relevant articles for a prompt. Empty string when the library is unavailable or empty. */
-async function lawContext(query, k = 8) {
+const lawLabel = (r) => r.parent_name ? `${r.law_name} (${r.kind || "لائحة"} تابعة لـ${r.parent_name})` : r.law_name;
+async function lawContext(query, k = 10) {
   const L = LAWS(); if (!L || !query) return "";
   try {
     const rows = await L.search(String(query).slice(0, 2500), k);
     if (!rows.length) return "";
-    return `\nالمواد النظامية ذات الصلة من المكتبة النظامية للمكتب (نصوص رسمية بآخر تعديل مسجل فيها):
-${rows.map((r) => `• ${r.law_name} — ${r.article}: ${String(r.body).slice(0, 1400)}`).join("\n")}
-عند الإحالة استند إلى هذه النصوص واذكر اسم النظام ورقم المادة كما وردا فيها. لا تنسب إلى مادة نصًا لم يرد هنا؛ وما احتجت إليه من غيرها فاكتب بجانبه (يُتحقق من رقم المادة).\n`;
+    return `\nالمواد النظامية ذات الصلة من المكتبة النظامية للمكتب (أنظمة ولوائحها التنفيذية وقواعدها، نصوص رسمية بآخر تعديل مسجل فيها):
+${rows.map((r) => `• ${lawLabel(r)}${r.status ? ` [${r.status}]` : ""} — ${r.article}: ${String(r.body).slice(0, 1400)}`).join("\n")}
+عند الإحالة استند إلى هذه النصوص واذكر اسم النظام أو اللائحة ورقم المادة كما وردا فيها، وقدّم نص النظام ثم ما تفصّله لائحته (مثل: المادة 3 من النظام والمادة 3/1 من لائحته التنفيذية). راعِ حالة النفاذ المذكورة بين المعقوفين. لا تنسب إلى مادة نصًا لم يرد هنا؛ وما احتجت إليه من غيرها فاكتب بجانبه (يُتحقق من رقم المادة).\n`;
   } catch (e) { console.warn("law search", e); return ""; }
 }
 
@@ -1774,23 +1778,31 @@ VIEWS.laws = () => {
   if (!L) return `<div class="page-head"><div><h1>المكتبة النظامية</h1></div></div><div class="card">${emptyBox("scale", "المكتبة متاحة في نسخة المنصة المستقلة", "افتحها من رابط GitHub Pages الخاص بالمكتب.")}</div>`;
   if (!S.lawList && !S.lawLoading) { S.lawLoading = true; L.list().then((x) => { S.lawList = x; }).catch(() => { S.lawList = []; toast("تعذّر تحميل المكتبة", true); }).finally(() => { S.lawLoading = false; render(); }); }
   const list = S.lawList || []; const total = list.reduce((s, l) => s + (l.articles || 0), 0);
+  const mains = list.filter((l) => !l.parent || !list.some((x) => x.slug === l.parent)); const kids = (slug) => list.filter((l) => l.parent === slug);
   const res = S.lawResults;
-  return `<div class="page-head"><div><h1>المكتبة النظامية</h1><p>${list.length} نظامًا · ${total} مادة. يقرأ المساعد منها المواد ذات الصلة قبل أن يحلل أو يصوغ.</p></div>
-    <div class="row"><button class="btn" data-act="importCore" ${S.lawImport ? "disabled" : ""}>${icon("download")}${S.lawImport ? esc(S.lawImport) : "استيراد الأنظمة الأساسية"}</button><button class="btn gold" data-act="addLaw">${icon("plus")}إضافة نظام أو تحديثه</button></div></div>
+  return `<div class="page-head"><div><h1>المكتبة النظامية</h1><p>${mains.length} نظامًا و${list.length - mains.length} لائحة وقواعد تابعة · ${total} مادة. يقرأ المساعد منها النظام ولوائحه ذات الصلة قبل أن يحلل أو يصوغ.</p></div>
+    <div class="row"><button class="btn" data-act="importCore" ${S.lawImport ? "disabled" : ""}>${icon("download")}${S.lawImport ? esc(S.lawImport) : "استيراد المكتبة الرسمية"}</button><button class="btn gold" data-act="addLaw">${icon("plus")}إضافة نظام أو لائحة</button></div></div>
   <form class="row" data-form="lawSearch"><input id="law-q" class="inp grow" name="q" value="${esc(S.lawQ || "")}" placeholder="ابحث في المواد: مهلة الاعتراض، الاختصاص المكاني، مكافأة نهاية الخدمة…" style="min-width:220px"><button class="btn primary" type="submit">${icon("search")}بحث</button>${res ? `<button class="btn ghost" type="button" data-act="lawClear">مسح</button>` : ""}</form>
-  ${res ? `<div class="card"><div class="card-h"><h3>نتائج «${esc(S.lawQ)}»</h3><span class="sub num">${res.length}</span></div>${res.length ? `<div class="list">${res.map((r) => `<div class="li" style="align-items:flex-start"><div class="body"><div class="ttl">${esc(r.law_name)} — ${esc(r.article)}</div><div class="prose small" style="margin-top:4px">${esc(r.body)}</div></div></div>`).join("")}</div>` : emptyBox("search", "لا توجد مواد مطابقة", "جرّب كلمات أخرى أو أضف النظام المعني إلى المكتبة.")}</div>` : ""}
+  ${res ? `<div class="card"><div class="card-h"><h3>نتائج «${esc(S.lawQ)}»</h3><span class="sub num">${res.length}</span></div>${res.length ? `<div class="list">${res.map((r) => `<div class="li" style="align-items:flex-start"><div class="body"><div class="ttl">${esc(lawLabel(r))} — ${esc(r.article)}</div><div class="prose small" style="margin-top:4px">${esc(r.body)}</div></div></div>`).join("")}</div>` : emptyBox("search", "لا توجد مواد مطابقة", "جرّب كلمات أخرى أو أضف النظام المعني إلى المكتبة.")}</div>` : ""}
   ${S.lawView ? lawArticlesCard() : ""}
-  ${S.lawLoading && !S.lawList ? `<div class="thinking">جارٍ التحميل…</div>` : list.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>النظام</th><th>المواد</th><th>الإصدار</th><th>آخر تعديل مسجل</th><th></th></tr></thead><tbody>
-    ${list.map((l) => `<tr data-act="lawOpen" data-id="${esc(l.slug)}"><td class="primary-cell"><div class="t">${esc(l.name)}</div>${l.source_url ? `<div class="ref"><a href="${esc(l.source_url)}" target="_blank" rel="noopener" data-noact="1">المصدر الرسمي</a></div>` : ""}</td><td data-label="المواد" class="num">${l.articles}</td><td data-label="الإصدار">${esc(l.issued || "—")}</td><td data-label="آخر تعديل">${esc(l.updated || "—")}</td>
-      <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm ghost" data-act="addLaw" data-id="${esc(l.slug)}" title="تحديث النص">${icon("edit")}</button><button class="btn sm ghost danger" data-act="lawRemove" data-id="${esc(l.slug)}" title="حذف">${icon("trash")}</button></div></td></tr>`).join("")}</tbody></table></div>`
-    : `<div class="card">${emptyBox("scale", "المكتبة فارغة", "ابدأ باستيراد الأنظمة الأساسية (11 نظامًا من هيئة الخبراء بمجلس الوزراء)، ثم أضف ما يحتاجه المكتب من ملف PDF أو Word أو نص ملصوق.", `<button class="btn gold" data-act="importCore">${icon("download")}استيراد الأنظمة الأساسية</button>`)}</div>`}`;
+  ${S.lawLoading && !S.lawList ? `<div class="thinking">جارٍ التحميل…</div>` : list.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>النظام ولوائحه</th><th>المواد</th><th>الإصدار</th><th>الحالة</th><th></th></tr></thead><tbody>
+    ${mains.map((l) => { const ch = kids(l.slug); const open = S.lawFam === l.slug; return lawRow(l, false, ch.length, open) + (open ? ch.map((c) => lawRow(c, true)).join("") : ""); }).join("")}</tbody></table></div>`
+    : `<div class="card">${emptyBox("scale", "المكتبة فارغة", "ابدأ باستيراد المكتبة الرسمية (الأنظمة ولوائحها التنفيذية وقواعدها من هيئة الخبراء بمجلس الوزراء والبوابة القانونية لوزارة العدل)، ثم أضف ما يحتاجه المكتب من ملف PDF أو Word أو نص ملصوق.", `<button class="btn gold" data-act="importCore">${icon("download")}استيراد المكتبة الرسمية</button>`)}</div>`}`;
 };
+function lawRow(l, child, nKids = 0, open = false) {
+  return `<tr data-act="lawOpen" data-id="${esc(l.slug)}"${child ? ' class="law-child"' : ""}><td class="primary-cell"><div class="t">${child ? "└ " : ""}${esc(l.name)} ${l.kind && l.kind !== "نظام" ? `<span class="pill">${esc(l.kind)}</span>` : ""}</div>
+      <div class="ref">${nKids ? `<button class="btn sm ghost" data-act="lawFam" data-id="${esc(l.slug)}" data-noact="1">${open ? "إخفاء" : "عرض"} ${nKids} من اللوائح والقواعد</button> ` : ""}${l.source_url ? `<a href="${esc(l.source_url)}" target="_blank" rel="noopener" data-noact="1">المصدر الرسمي</a>` : ""}</div></td>
+      <td data-label="المواد" class="num">${l.articles}</td><td data-label="الإصدار">${esc(l.issued || "—")}</td><td data-label="الحالة">${l.status ? `<span class="pill warn">${esc(l.status)}</span>` : `<span class="pill ok">ساري</span>`}</td>
+      <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm ghost" data-act="addLaw" data-id="${esc(l.slug)}" title="تحديث النص">${icon("edit")}</button><button class="btn sm ghost danger" data-act="lawRemove" data-id="${esc(l.slug)}" title="حذف">${icon("trash")}</button></div></td></tr>`;
+}
+A.lawFam = (el) => { S.lawFam = S.lawFam === el.dataset.id ? null : el.dataset.id; render(); };
 function lawArticlesCard() {
   const v = S.lawView;
   return `<div class="card"><div class="card-h"><h3>${esc(v.name)}</h3><button class="btn sm ghost" data-act="lawClose">${icon("x")}إغلاق</button></div>
     ${v.rows ? `<div class="list">${v.rows.map((a) => `<div class="li" style="align-items:flex-start"><div class="body"><div class="ttl">${esc(a.article)}</div><div class="prose small">${esc(a.body)}</div></div></div>`).join("")}</div>` : `<div class="thinking">جارٍ التحميل…</div>`}</div>`;
 }
-/* The core laws extracted from laws.boe.gov.sa by tools/boe_laws.py, published as docs/laws/core.json. */
+/* The official library built by tools/law_library.py (laws.boe.gov.sa + laws.moj.gov.sa), published as docs/laws/core.json.
+   Entries come in family order: each main law followed by its regulations (`parent` = the main law's slug). */
 A.importCore = async () => {
   const L = LAWS(); if (!L || S.lawImport) return;
   S.lawImport = "جارٍ التحميل…"; render();
@@ -1799,10 +1811,11 @@ A.importCore = async () => {
     const entries = Object.entries(pack.laws || {}); let n = 0, arts = 0;
     for (const [slug, law] of entries) {
       S.lawImport = `${++n}/${entries.length}: ${law.name}`; render();
-      await L.save({ slug: "boe-" + slug, name: law.name, source_url: law.url, issued: law.issued, updated: `مستخرج من البوابة الرسمية ${pack.extracted}` }, law.articles);
+      await L.save({ slug: "boe-" + slug, name: law.name, source_url: law.url, issued: law.issued, updated: `${law.source || "البوابة الرسمية"} ${pack.extracted}`,
+        kind: law.kind || "نظام", parent: law.parent ? "boe-" + law.parent : null, ord: n, status: law.status || null }, law.articles);
       arts += law.articles.length;
     }
-    toast(`استُورد ${entries.length} نظامًا (${arts} مادة) من هيئة الخبراء بمجلس الوزراء`);
+    toast(`استُورد ${entries.length} نظامًا ولائحة (${arts} مادة) من المصادر الرسمية`);
   } catch (e) { console.error(e); toast("تعذّر الاستيراد: " + (e.message || ""), true); }
   finally { S.lawImport = null; S.lawList = null; render(); }
 };
@@ -1817,6 +1830,8 @@ A.addLaw = (el) => {
   S.lawDraft = { text: "" };
   modal(l.slug ? "تحديث نص النظام" : "إضافة نظام إلى المكتبة", `<form id="law-form" data-form="saveLaw" class="stack" style="gap:12px"><input type="hidden" name="slug" value="${esc(l.slug || "")}">
     <div class="field"><label for="lw-name" class="req">اسم النظام</label><input id="lw-name" class="inp" name="name" required value="${esc(l.name || "")}" placeholder="مثال: نظام المرافعات الشرعية"></div>
+    <div class="grid2"><div class="field"><label for="lw-kind">النوع</label><select id="lw-kind" class="inp" name="kind">${["نظام", "لائحة تنفيذية", "لائحة", "قواعد", "ضوابط", "أدلة إجرائية", "آلية", "تنظيم", "تعميم"].map((k) => `<option${(l.kind || "نظام") === k ? " selected" : ""}>${k}</option>`).join("")}</select></div>
+      <div class="field"><label for="lw-parent">يتبع النظام (للوائح)</label><select id="lw-parent" class="inp" name="parent"><option value="">— نظام رئيسي —</option>${(S.lawList || []).filter((x) => !x.parent && x.slug !== l.slug).map((x) => `<option value="${esc(x.slug)}"${l.parent === x.slug ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div></div>
     <div class="grid2"><div class="field"><label for="lw-iss">تاريخ الإصدار / المرسوم</label><input id="lw-iss" class="inp" name="issued" value="${esc(l.issued || "")}" placeholder="م/1 بتاريخ 22/1/1435هـ"></div>
       <div class="field"><label for="lw-upd">آخر تعديل مضمّن</label><input id="lw-upd" class="inp" name="updated" value="${esc(l.updated || "")}" placeholder="تاريخ آخر تعديل في النص"></div></div>
     <div class="field"><label for="lw-src">رابط المصدر الرسمي</label><input id="lw-src" class="inp" name="source_url" dir="ltr" value="${esc(l.source_url || "")}" placeholder="https://laws.boe.gov.sa/..."></div>
@@ -1840,7 +1855,7 @@ F.saveLaw = async (d) => {
   const arts = splitArticles(d.text || "");
   if (!arts.length) return toast("لم أجد مواد في النص. تأكد أن كل مادة تبدأ بسطر «المادة …».", true);
   const name = d.name.trim(); const slug = d.slug || slugify(name);
-  try { await LAWS().save({ slug, name, source_url: d.source_url.trim(), issued: d.issued.trim(), updated: d.updated.trim() }, arts); }
+  try { await LAWS().save({ slug, name, source_url: d.source_url.trim(), issued: d.issued.trim(), updated: d.updated.trim(), kind: d.kind || "نظام", parent: d.parent || null }, arts); }
   catch (e) { console.error(e); return toast("تعذّر الحفظ: " + (e.message || ""), true); }
   closeModal(); S.lawList = null; toast(`حُفظ «${name}»: ${arts.length} مادة`); render();
 };
@@ -2507,6 +2522,7 @@ VIEWS.doc = () => {
     <div class="row">${generating ? `<span class="thinking">يكتب المساعد…</span><button class="btn" data-act="stopGen">إيقاف</button>` : `
       <button class="btn primary" data-act="saveDoc" data-id="${d.id}">${icon("check")}حفظ</button>
       <button class="btn gold" data-act="exportDocx" data-id="${d.id}">${icon("download")}تنزيل Word</button>
+      <button class="btn" data-act="sendDoc" data-id="${d.id}">${icon("send")}إرسال للعميل</button>
       <button class="btn" data-act="copyDoc">${icon("copy")}نسخ النص</button>
       <button class="btn" data-act="aiEdit" data-id="${d.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}تعديل بالمساعد</button>
       <button class="btn ghost" data-act="toggleFinal" data-id="${d.id}">${d.status === "final" ? "إرجاع لمسودة" : "اعتماد كنهائي"}</button>
@@ -2703,10 +2719,10 @@ function invRow(x) {
   const st = invState(x); const paid = invPaid(x);
   return `<tr><td class="primary-cell"><div class="t">${esc(x.desc || "مطالبة")}</div><div class="ref">${esc(x.no || "")} · ${fmtDate(x.date)}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td>
     <td data-label="الإجمالي" class="num">${money(x.total)}</td><td data-label="المسدد" class="num">${money(paid)}</td><td data-label="الاستحقاق" class="num">${x.due ? fmtDate(x.due) : "—"}</td><td data-label="الحالة">${pill(st.t, st.c)}</td>
-    <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${st.k !== "paid" && st.k !== "void" ? `<button class="btn sm" data-act="newPayment" data-inv="${x.id}">${icon("plus")}دفعة</button>` : ""}<button class="btn sm ghost" data-act="invoiceDoc" data-id="${x.id}" title="مستند المطالبة">${icon("docs")}</button><button class="btn sm ghost" data-act="editFin" data-id="${x.id}" title="تعديل">${icon("edit")}</button></div></td></tr>`;
+    <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${st.k !== "paid" && st.k !== "void" ? `<button class="btn sm" data-act="newPayment" data-inv="${x.id}">${icon("plus")}دفعة</button>` : ""}<button class="btn sm ghost" data-act="sendInvoice" data-id="${x.id}" title="إرسال للعميل (واتساب / بريد)${x.sentAt ? ` — أُرسلت ${fmtWhen(x.sentAt)}` : ""}">${icon("send")}</button><button class="btn sm ghost" data-act="invoiceDoc" data-id="${x.id}" title="مستند المطالبة">${icon("docs")}</button><button class="btn sm ghost" data-act="editFin" data-id="${x.id}" title="تعديل">${icon("edit")}</button></div></td></tr>`;
 }
 const invTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>المطالبة</th><th>العميل</th><th>الإجمالي</th><th>المسدد</th><th>الاستحقاق</th><th>الحالة</th><th></th></tr></thead><tbody>${rows.map(invRow).join("")}</tbody></table></div>` : "";
-const payTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الدفعة</th><th>العميل</th><th>المبلغ</th><th>الطريقة</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t">${fmtDate(x.date)}</div><div class="ref">${x.invoiceId ? esc(byId(S.data.finance, x.invoiceId)?.no || "") : "دفعة مقدمة"}${x.ref ? " · " + esc(x.ref) : ""}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td><td data-label="المبلغ" class="num">${money(x.amount)}</td><td data-label="الطريقة">${esc(x.method || "")}</td><td data-noact="1"><button class="btn sm ghost" data-act="editFin" data-id="${x.id}">${icon("edit")}</button></td></tr>`).join("")}</tbody></table></div>` : "";
+const payTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الدفعة</th><th>العميل</th><th>المبلغ</th><th>الطريقة</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t">${fmtDate(x.date)}</div><div class="ref">${x.invoiceId ? esc(byId(S.data.finance, x.invoiceId)?.no || "") : "دفعة مقدمة"}${x.ref ? " · " + esc(x.ref) : ""}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td><td data-label="المبلغ" class="num">${money(x.amount)}</td><td data-label="الطريقة">${esc(x.method || "")}</td><td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${receiptBtn(x)}<button class="btn sm ghost" data-act="editFin" data-id="${x.id}">${icon("edit")}</button></div></td></tr>`).join("")}</tbody></table></div>` : "";
 const expTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>المصروف</th><th>القضية</th><th>المبلغ</th><th>على العميل</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t">${esc(x.category || "")}${x.desc ? " — " + esc(x.desc) : ""}</div><div class="ref">${fmtDate(x.date)}</div></td><td data-label="القضية">${esc(caseById(x.caseId)?.title || "—")}</td><td data-label="المبلغ" class="num">${money(x.amount)}</td><td data-label="على العميل">${x.billable ? pill("نعم", "gold") : pill("لا", "plain")}</td><td data-noact="1"><button class="btn sm ghost" data-act="editFin" data-id="${x.id}">${icon("edit")}</button></td></tr>`).join("")}</tbody></table></div>` : "";
 
 VIEWS.finance = () => {
@@ -2774,14 +2790,16 @@ function paymentForm(x = {}) {
     <div class="field"><label for="pm-date">التاريخ</label><input id="pm-date" class="inp" type="date" name="date" value="${esc(x.date || todayStr())}"></div>
     <div class="field"><label for="pm-m">طريقة السداد</label><select id="pm-m" class="inp" name="method">${PAY_METHODS.map((m) => opt(m, m, x.method)).join("")}</select></div>
     <div class="field"><label for="pm-ref">المرجع</label><input id="pm-ref" class="inp" name="ref" value="${esc(x.ref)}" placeholder="رقم الحوالة أو الشيك"></div>
+    <div class="field span2"><label for="pm-rcpt">الإيصال (صورة أو PDF)</label><input id="pm-rcpt" class="inp" type="file" accept="image/*,.pdf" data-ch="pmReceipt">${x.receipt ? `<span class="hint">المرفق الحالي: ${esc(x.receipt.name)} — اختر ملفًا جديدًا لاستبداله.</span>` : `<span class="hint">يُحفظ مستندًا مع الدفعة، ولا يطّلع عليه إلا المدير.</span>`}</div>
     ${x.id ? `<label class="chk span2"><input type="checkbox" name="remove" value="1"> حذف هذه الدفعة</label>` : ""}</form>`;
 }
-A.newPayment = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); modal("تسجيل دفعة", paymentForm({ invoiceId: el.dataset.inv || "", caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.newPayment = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); S.pmReceipt = null; modal("تسجيل دفعة", paymentForm({ invoiceId: el.dataset.inv || "", caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.savePayment = async (d) => {
   const inv = byId(S.data.finance, d.invoiceId);
   const data = { type: "payment", invoiceId: d.invoiceId, clientId: d.clientId || inv?.clientId || "", caseId: d.caseId || inv?.caseId || "", amount: num(d.amount), date: d.date, method: d.method, ref: d.ref };
-  let id = d.id; const gone = d.id && d.remove === "1";
-  if (gone) await del(`finance/${d.id}`);
+  let id = d.id; const gone = d.id && d.remove === "1"; const old = d.id ? byId(S.data.finance, d.id) : null;
+  if (!gone) { try { await attachReceipt(data, old); } catch (e) { return fileErr(e, "الإيصال"); } }
+  if (gone) { await del(`finance/${d.id}`); if (old?.receipt?.assetId) { try { await S.caps.assets.delete(old.receipt.assetId); } catch (e) { console.warn(e); } } }
   else if (d.id) await upd(`finance/${d.id}`, data);
   else { data.no = finNo("payment"); id = await add("finance", data); if (data.caseId) await logCase(data.caseId, "note", `استُلمت دفعة ${money(data.amount)} ر.س (${d.method})`); }
   await syncJournal("payment", id, gone ? null : data, `دفعة من ${clientName(data.clientId)}${data.ref ? " — " + data.ref : ""}`);
@@ -2808,7 +2826,7 @@ F.saveExpense = async (d) => {
   closeModal(); toast("حُفظ المصروف");
 };
 A.editFin = (el) => {
-  const x = byId(S.data.finance, el.dataset.id); if (!x) return;
+  const x = byId(S.data.finance, el.dataset.id); if (!x) return; S.pmReceipt = null;
   const [t, f, form] = x.type === "invoice" ? ["تعديل المطالبة", "fin-form", invoiceForm(x)] : x.type === "payment" ? ["تعديل الدفعة", "fin-form", paymentForm(x)] : ["تعديل المصروف", "fin-form", expenseForm(x)];
   modal(t, form, `<button class="btn primary" type="submit" form="${f}">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
 };
@@ -2840,7 +2858,7 @@ ${x.note ? `\n${x.note}` : ""}
 
 !| ${f.nameAr} |
 !| التوقيع والختم: ........................ |`;
-  const id = await add("docs", { kind: "invoice", title: `مطالبة مالية ${x.no} — ${cl.name || ""}`, caseId: x.caseId || "", clientId: x.clientId, body, status: "draft", updatedAt: nowIso() });
+  const id = await add("docs", { kind: "invoice", finId: x.id, title: `مطالبة مالية ${x.no} — ${cl.name || ""}`, caseId: x.caseId || "", clientId: x.clientId, body, status: "draft", updatedAt: nowIso() });
   go("doc", id);
 };
 
@@ -2889,6 +2907,7 @@ F.saveConsult = async (d) => {
 };
 VIEWS.consult = () => {
   const x = byId(S.data.consults, S.route.id);
+  if (x) subscribeConsult(x.id);
   if (!x) return S.loaded.consults ? `<div class="card">${emptyBox("chat", "لم نجد الاستشارة", "", `<button class="btn" data-act="go" data-r="consults">العودة</button>`)}</div>` : `<div class="thinking">جارٍ التحميل…</div>`;
   const gen = S.gen?.kind === "consult" && S.gen.id === x.id; const key = "csa." + x.id; const ans = gen ? S.gen.text : S.drafts[key] ?? x.answer ?? "";
   const phone = x.phone || byId(S.data.clients, x.clientId)?.phone;
@@ -2899,16 +2918,15 @@ VIEWS.consult = () => {
       <div class="fact"><div class="k">المستشار</div><div class="v">${x.lawyerId ? esc(lawyerName(x.lawyerId)) : isManager() ? `<a data-act="editConsult" data-id="${x.id}" style="cursor:pointer">إسناد</a>` : "بانتظار إسناد المدير"}</div></div>${isManager() ? `<div class="fact"><div class="k">الأتعاب</div><div class="v num">${x.fee ? money(x.fee) + " ر.س" : "—"}</div></div>` : ""}</div></div>
   <div class="cols"><div class="stack">
     <div class="card"><div class="card-h"><h3>الرأي القانوني</h3><div class="row">${gen ? `<span class="thinking small">يكتب المساعد…</span><button class="btn sm" data-act="stopGen">إيقاف</button>` : S.caps.sample ? `<button class="btn sm gold" data-act="genOpinion" data-id="${x.id}">${icon("spark")}${ans ? "إعادة الصياغة" : "صياغة المسودة"}</button>` : ans ? "" : `<button class="btn sm gold" data-act="opinionTemplate" data-id="${x.id}">${icon("docs")}أدرج هيكل الرأي</button>`}</div></div>
-      <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" data-live="csLive" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
+      <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
       <div class="row" style="margin-top:10px"><button class="btn primary" data-act="saveAnswer" data-id="${x.id}">${icon("check")}حفظ</button><button class="btn" data-act="opinionDoc" data-id="${x.id}">${icon("docs")}مستند Word بترويسة المكتب</button>
-        <a id="cs-wa" class="btn" href="${esc(waHref(phone, ans))}" target="_blank" rel="noopener">${icon("wa")}إرسال واتساب</a></div></div></div>
+        <button class="btn" data-act="sendConsult" data-id="${x.id}">${icon("send")}إرسال للعميل (واتساب / بريد)</button></div></div>${consultFilesCard(x)}</div>
     <div class="stack">${feeCard("consultId", x)}<div class="card"><div class="card-h"><h3>السؤال والوقائع</h3></div><div class="prose">${esc(x.question || "")}</div></div>
       <div class="card"><div class="card-h"><h3>إجراءات</h3></div><div class="stack" style="gap:8px">
         ${x.caseId ? `<button class="btn" data-act="openCase" data-id="${x.caseId}">${icon("cases")}فتح القضية المرتبطة</button>` : `<button class="btn" data-act="consultToCase" data-id="${x.id}">${icon("cases")}تحويل إلى قضية</button>`}
         ${isManager() ? `<button class="btn" data-act="newInvoice" data-consult="${x.id}">${icon("receipt")}مطالبة بالأتعاب</button>` : ""}
         <button class="btn danger" data-act="deleteConsult" data-id="${x.id}">${icon("trash")}حذف</button></div></div></div></div>`;
 };
-CH.csLive = () => { const a = $("#cs-wa"); const x = byId(S.data.consults, S.route.id); if (a && x) a.href = waHref(x.phone || byId(S.data.clients, x.clientId)?.phone, $("#cs-answer").value); };
 CH.consultStatus = async (el) => { await upd(`consults/${el.dataset.id}`, { status: el.value, ...(el.value === "done" ? { doneAt: nowIso() } : {}) }); if (el.value === "done") { for (const t of S.data.tasks.filter((t) => t.consultId === el.dataset.id && t.status !== "done")) await upd(`tasks/${t.id}`, { status: "done", doneAt: nowIso() }); } toast("حُدّثت الحالة"); };
 A.opinionTemplate = (el) => {
   const x = byId(S.data.consults, el.dataset.id); const B0 = "[........]";
@@ -2948,7 +2966,8 @@ A.saveAnswer = async (el) => { const x = byId(S.data.consults, el.dataset.id); a
 A.genOpinion = async (el) => {
   if (!needSample()) return;
   const x = byId(S.data.consults, el.dataset.id);
-  const laws = await lawContext([x.field, x.subject, x.question].join(" "), 10);
+  const docs = consultDocsText(x);
+  const laws = await lawContext([x.field, x.subject, x.question, docs.slice(0, 1500)].join(" "), 12);
   const prompt = `أنت مستشار قانوني سعودي أول في «${S.firm.nameAr}». اكتب مذكرة رأي قانوني مهنية ردًا على الاستشارة التالية، وفق الأنظمة السارية في المملكة العربية السعودية.
 تاريخ اليوم: ${todayStr()} الموافق ${fmtHijri(todayStr())}.
 نوع الاستشارة: ${x.type} — المجال: ${x.field}
@@ -2957,7 +2976,7 @@ A.genOpinion = async (el) => {
 """
 ${x.question}
 """
-${JURIS_GUIDE}
+${docs}${JURIS_GUIDE}
 ${laws}
 
 الهيكل والصيغة (عناوين تبدأ بـ "## "، قوائم مرقمة "1. "، نقاط "- "، بلا ** ولا ###):
@@ -3184,6 +3203,168 @@ F.rejectFee = async (d) => {
   const f = byId(S.data.fees, d.id); await upd(`fees/${d.id}`, { status: "rejected", reason: d.reason.trim(), decidedBy: myLid() || "", decidedAt: nowIso() });
   if (f?.caseId) await logCase(f.caseId, "note", `رُفضت الأتعاب المقترحة (${money(f.amount)} ر.س): ${d.reason.trim()}`);
   closeModal(); toast("رُفضت الأتعاب المقترحة");
+};
+
+/* ============ Rakz — sending to clients (WhatsApp / email / share), payment receipts, consultation documents ============ */
+
+/* ---------- files kept outside a case (receipts, consultation documents) ---------- */
+// Same storage shape as case attachments: formats the runtime cannot hold natively (e.g. .docx) ride inside a JSON wrapper.
+async function storeFile(file, folder) {
+  let blob = file, type = file.type, wrapped = false;
+  if (!ASSET_TYPES.includes(type)) {
+    const b64 = await blobToB64(file);
+    blob = new Blob([JSON.stringify({ name: file.name, type: file.type || "application/octet-stream", b64 })], { type: "application/json" }); type = "application/json"; wrapped = true;
+  }
+  const res = await S.caps.assets.upload(blob, { type, folder });
+  return { assetId: res.id, name: file.name, mime: file.type, size: file.size, wrapped };
+}
+const fileErr = (e, name) => { const m = { too_large: "الملف أكبر من المسموح", unsupported_type: "نوع الملف غير مدعوم", quota_or_state: "امتلأت مساحة التخزين", not_granted: "لا تملك صلاحية رفع الملفات" }; toast(`${name}: ${m[e?.code] || "تعذّر الرفع"}`, true); console.error(e); };
+/* Any stored file by id: a case attachment, a consultation document, or a payment's receipt (looked up by payment id). */
+function anyFile(id) {
+  const p = byId(S.data.finance, id);
+  return byId(S.caseFiles, id) || byId(S.csFiles || [], id) || (p?.receipt ? { id: p.id, ...p.receipt } : null);
+}
+const kb = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " م.ب" : Math.max(1, Math.round(n / 1024)) + " ك.ب");
+
+/* ---------- payment receipts (stored under finance/, readable by managers only) ---------- */
+CH.pmReceipt = (el) => { const f = el.files[0]; if (f && f.size > 20 * 1024 * 1024) { el.value = ""; return toast("الحد الأقصى 20 ميجابايت", true); } S.pmReceipt = f || null; };
+async function attachReceipt(data, old) {
+  const f = S.pmReceipt; S.pmReceipt = null; if (!f || !S.caps.assets) return;
+  data.receipt = clean({ ...(await storeFile(f, "finance")), at: nowIso() });
+  if (old?.receipt?.assetId) { try { await S.caps.assets.delete(old.receipt.assetId); } catch (e) { console.warn(e); } }
+}
+const receiptBtn = (x) => x.receipt ? `<button class="btn sm ghost" data-act="viewFile" data-id="${x.id}" title="الإيصال: ${esc(x.receipt.name)}">${icon("eye")}الإيصال</button>` : "";
+
+/* ---------- consultation documents ---------- */
+function subscribeConsult(id) {
+  if (S.csFor === id || !S.caps.db) return;
+  S.csUnsub?.(); S.csFiles = []; S.csFor = id;
+  S.csUnsub = S.caps.db.collection(`consults/${id}/files`).onSnapshot((s) => { S.csFiles = s.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.at || "").localeCompare(a.at || "")); scheduleRender(); }, () => {});
+}
+function consultFilesCard(x) {
+  const ups = (S.uploads || []).filter((u) => u.consultId === x.id);
+  return `<div class="card"><div class="card-h"><h3>المستندات</h3><button class="btn sm" data-act="csPick">${icon("upload")}رفع مستند</button></div>
+    <input type="file" id="cs-file-in" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.txt" data-ch="csFilesPicked" data-id="${x.id}">
+    ${ups.map((u) => `<div class="li"><div class="body"><div class="ttl">${esc(u.name)}</div><div class="thinking small">${esc(u.stage)}</div></div></div>`).join("")}
+    ${(S.csFiles || []).length ? `<div class="list">${S.csFiles.map((f) => `<div class="li"><div class="body"><div class="ttl" style="overflow-wrap:anywhere">${esc(f.name)}</div><div class="small muted">${kb(f.size || 0)} · ${fmtWhen(f.at)}${f.text ? " · يقرؤه المساعد" : ""}</div></div>
+      <div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm ghost" data-act="viewFile" data-id="${f.id}" title="عرض">${icon("eye")}</button><button class="btn sm ghost" data-act="downloadFile" data-id="${f.id}" title="تنزيل">${icon("download")}</button><button class="btn sm ghost danger" data-act="csDelFile" data-id="${f.id}" title="حذف">${icon("trash")}</button></div></div>`).join("")}</div>`
+      : ups.length ? "" : `<p class="small muted">أرفق العقد أو المراسلات أو الصكوك محل الاستشارة؛ يقرؤها المساعد عند صياغة الرأي.</p>`}</div>`;
+}
+A.csPick = () => { if (!guardWrite()) return; if (!S.caps.assets) return toast("رفع الملفات يحتاج صلاحية «محرر» على المنصة.", true); $("#cs-file-in")?.click(); };
+CH.csFilesPicked = async (el) => {
+  const id = el.dataset.id; const files = [...el.files]; el.value = ""; S.uploads = S.uploads || [];
+  for (const file of files) {
+    if (file.size > 20 * 1024 * 1024) { toast(`${file.name}: الحد الأقصى 20 ميجابايت`, true); continue; }
+    const u = { consultId: id, name: file.name, stage: "جارٍ الرفع…" }; S.uploads.push(u); render();
+    try {
+      const stored = await storeFile(file, "consults");
+      u.stage = "قراءة النص…"; render();
+      let text = ""; try { text = (await extractText(file)).text; } catch (e) { console.warn("extract", e); }
+      await S.caps.db.collection(`consults/${id}/files`).doc().set(clean({ ...stored, text: text.slice(0, 60000), at: nowIso(), by: myLid() || S.me.id }));
+      toast(`أُرفق ${file.name}`);
+    } catch (e) { fileErr(e, file.name); }
+    finally { S.uploads = S.uploads.filter((x) => x !== u); render(); }
+  }
+};
+A.csDelFile = (el) => confirmBox("حذف المستند", "سيُحذف المستند من ملف الاستشارة نهائيًا.", "حذف", async () => {
+  const f = byId(S.csFiles, el.dataset.id); if (!f) return;
+  await del(`consults/${S.csFor}/files/${f.id}`);
+  try { if (S.caps.assets) await S.caps.assets.delete(f.assetId); } catch (e) { console.warn(e); }
+  toast("حُذف المستند");
+}, true);
+/* Extracted text of the consultation's documents, for the opinion prompt. */
+function consultDocsText(x, max = 40000) {
+  const fs = S.csFor === x.id ? (S.csFiles || []).filter((f) => f.text) : [];
+  if (!fs.length) return "";
+  return `\nالمستندات المرفقة بالاستشارة (نصها المستخرج؛ استند إليها في الوقائع وأحِل إليها باسمها):\n"""\n${fs.map((f) => `--- ${f.name} ---\n${f.text.slice(0, 15000)}`).join("\n\n").slice(0, max)}\n"""\n`;
+}
+
+/* ---------- sending to the client: WhatsApp, email, or the phone's share sheet ---------- */
+const mdPlain = (t) => String(t || "").split("\n").map((l) => l.replace(/^#{1,3}\s+|^>\s?|^!?\|\s?|\s?\|$/g, "").replace(/\s\|\s/g, " — ").replace(/\*\*/g, "").replace(/^---$/, "")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+const MAIL_MAX = 1800; // mailto: links get cut off by mail apps beyond roughly 2000 characters
+function sendModal(ctx) {
+  // ctx: { title, subject, text, phone, email, caseId, record: "docs/id" | "finance/id" | "consults/id", docTitle, docBody, label }
+  S.send = ctx; S.sendFile = null;
+  if (ctx.docBody) {
+    buildDocx(ctx.docTitle, ctx.docBody).then((blob) => { if (S.send === ctx) S.sendFile = new File([blob], safeName(ctx.docTitle) + ".docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }); }).catch((e) => console.warn(e));
+  }
+  const canShare = !!(navigator.canShare && ctx.docBody);
+  modal(ctx.title || "إرسال للعميل", `<div class="stack" style="gap:12px">
+    <div class="grid2"><div class="field"><label for="snd-phone">جوال العميل (واتساب)</label><input id="snd-phone" class="inp num" dir="ltr" value="${esc(ctx.phone || "")}" placeholder="05xxxxxxxx"></div>
+      <div class="field"><label for="snd-email">البريد الإلكتروني</label><input id="snd-email" class="inp" type="email" dir="ltr" value="${esc(ctx.email || "")}" placeholder="client@example.com"></div></div>
+    <div class="field"><label for="snd-subj">الموضوع (للبريد)</label><input id="snd-subj" class="inp" value="${esc(ctx.subject || "")}"></div>
+    <div class="field"><label for="snd-text">نص الرسالة</label><textarea id="snd-text" class="inp" rows="11">${esc(ctx.text || "")}</textarea>
+      <span class="hint">${ctx.docBody ? `لإرسال المستند نفسه: ${canShare ? "«مشاركة ملف Word» تفتح قائمة المشاركة في الجوال (واتساب، البريد…) والملف مرفق، أو " : ""}نزّل ملف Word وأرفقه في المحادثة أو البريد.` : "يُفتح واتساب أو تطبيق البريد والرسالة جاهزة، ويُسجَّل الإرسال في ملف القضية."}</span></div></div>`,
+    `<button class="btn primary" data-act="sendVia" data-ch="wa" style="background:#1F8F55;border-color:#1F8F55">${icon("wa")}واتساب</button>
+     <button class="btn" data-act="sendVia" data-ch="mail">${icon("mail")}بريد إلكتروني</button>
+     ${canShare ? `<button class="btn gold" data-act="sendVia" data-ch="share">${icon("send")}مشاركة ملف Word</button>` : ""}
+     ${ctx.docBody ? `<button class="btn ghost" data-act="sendVia" data-ch="file">${icon("download")}تنزيل Word</button>` : ""}
+     <button class="btn ghost" data-act="closeModal">إغلاق</button>`, true);
+}
+const safeName = (t) => String(t || "مستند").replace(/[\\/:*?"<>|]/g, "-").slice(0, 90);
+const CH_NAMES = { wa: "واتساب", mail: "البريد الإلكتروني", share: "مشاركة الملف", file: "ملف Word" };
+A.sendVia = async (el) => {
+  const ctx = S.send; if (!ctx) return; const ch = el.dataset.ch;
+  const phone = $("#snd-phone").value.trim(), email = $("#snd-email").value.trim(), subject = $("#snd-subj").value.trim(), text = $("#snd-text").value;
+  // Open the target synchronously, while the click still counts as a user gesture.
+  if (ch === "wa") {
+    if (!waNumber(phone)) return toast("أدخل رقم جوال صحيحًا", true);
+    window.open(waHref(phone, text), "_blank", "noopener");
+  } else if (ch === "mail") {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("أدخل بريدًا إلكترونيًا صحيحًا", true);
+    const body = text.length > MAIL_MAX ? text.slice(0, MAIL_MAX) + "\n…\n(النص كاملًا في الملف المرفق)" : text;
+    location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  } else if (ch === "share") {
+    if (!S.sendFile) return toast("يُجهَّز الملف… أعد المحاولة بعد لحظة");
+    const data = { files: [S.sendFile], title: ctx.docTitle, text: text.slice(0, 1000) };
+    if (!navigator.canShare(data)) return toast("المتصفح لا يدعم مشاركة الملفات؛ استخدم «تنزيل Word».", true);
+    try { await navigator.share(data); } catch (e) { if (e?.name === "AbortError") return; console.warn(e); return toast("تعذّرت المشاركة", true); }
+  } else if (ch === "file") {
+    try { const blob = S.sendFile || (await buildDocx(ctx.docTitle, ctx.docBody)); await S.caps.downloads.save({ filename: safeName(ctx.docTitle) + ".docx", data: blob }); toast("جاهز للتنزيل"); }
+    catch (e) { if (e?.code !== "declined") toast("تعذّر إنشاء ملف Word.", true); }
+    return;
+  }
+  const to = ch === "wa" ? waNumber(phone) : ch === "mail" ? email : "";
+  try {
+    if (ctx.record) await upd(ctx.record, { sentAt: nowIso(), sentVia: CH_NAMES[ch], sentTo: to });
+    if (ctx.caseId) await logCase(ctx.caseId, "note", `أُرسل ${ctx.label || "مستند"} إلى العميل عبر ${CH_NAMES[ch]}${to ? ` (${to})` : ""}`);
+  } catch (e) { console.warn(e); }
+  toast(`سُجّل الإرسال عبر ${CH_NAMES[ch]}`);
+};
+const clientOf = (x) => byId(S.data.clients, x.clientId || caseById(x.caseId)?.clientId) || {};
+const signoff = () => `\n\nمع التحية،\n${S.firm.nameAr}${S.firm.phone ? `\n${S.firm.phone}` : ""}`;
+
+/* A financial claim straight from the finance table. */
+function invoiceMessage(x) {
+  const cl = clientOf(x); const f = S.firm; const paid = invPaid(x); const left = num(x.total) - paid;
+  return `السلام عليكم ${cl.name || ""}،
+نفيدكم بالمطالبة المالية رقم ${x.no} بتاريخ ${fmtDate(x.date)}:
+البيان: ${x.desc}
+المبلغ: ${money(x.amount)} ر.س${num(x.vatAmount) ? `\nضريبة القيمة المضافة (${x.vat}%): ${money(x.vatAmount)} ر.س` : ""}
+الإجمالي: ${money(x.total)} ر.س${paid ? `\nالمسدد: ${money(paid)} ر.س\nالمتبقي: ${money(left)} ر.س` : ""}${x.due ? `\nتاريخ الاستحقاق: ${fmtDate(x.due)}` : ""}
+${f.iban ? `\nطريقة السداد: تحويل إلى حساب ${f.nameAr}${f.bank ? ` لدى ${f.bank}` : ""}\nالآيبان: ${f.iban}` : ""}${f.vat ? `\nالرقم الضريبي: ${f.vat}` : ""}${signoff()}`;
+}
+A.sendInvoice = (el) => {
+  const x = byId(S.data.finance, el.dataset.id); if (!x) return; const cl = clientOf(x);
+  const doc = S.data.docs.filter((d) => d.kind === "invoice" && d.finId === x.id).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0];
+  sendModal({ title: `إرسال المطالبة ${x.no}`, subject: `مطالبة مالية ${x.no} — ${S.firm.nameAr}`, text: invoiceMessage(x), phone: cl.phone, email: cl.email, caseId: x.caseId,
+    record: `finance/${x.id}`, label: `المطالبة المالية ${x.no}`, ...(doc ? { docTitle: doc.title, docBody: doc.body } : {}) });
+};
+/* Any drafted document (claim, letter, contract, pleading…) from the editor. */
+A.sendDoc = (el) => {
+  const d = byId(S.data.docs, el.dataset.id); if (!d) return;
+  const title = $("#doc-title")?.value.trim() || d.title; const body = $("#doc-body")?.value ?? d.body;
+  const cl = clientOf(d); const plain = mdPlain(body);
+  const inv = d.finId ? byId(S.data.finance, d.finId) : null;
+  const text = inv ? invoiceMessage(inv) : `السلام عليكم ${cl.name || ""}،\nنرفق لكم: ${title}.${plain.length <= 1500 ? `\n\n${plain}` : "\n(المستند في الملف المرفق)"}${signoff()}`;
+  sendModal({ title: "إرسال المستند", subject: `${title} — ${S.firm.nameAr}`, text, phone: cl.phone, email: cl.email, caseId: d.caseId, record: `docs/${d.id}`, label: `«${title}»`, docTitle: title, docBody: body });
+};
+/* A consultation's opinion. */
+A.sendConsult = (el) => {
+  const x = byId(S.data.consults, el.dataset.id); if (!x) return; const cl = clientOf(x);
+  const ans = $("#cs-answer")?.value ?? x.answer ?? "";
+  sendModal({ title: "إرسال الرأي القانوني", subject: `رأي قانوني: ${x.subject} — ${S.firm.nameAr}`, text: `السلام عليكم ${cl.name || x.prospect || ""}،\nبخصوص استشارتكم «${x.subject}»:\n\n${mdPlain(ans)}${signoff()}`,
+    phone: x.phone || cl.phone, email: x.email || cl.email, caseId: x.caseId, record: `consults/${x.id}`, label: "الرأي القانوني", docTitle: `رأي قانوني — ${x.subject}`, docBody: ans });
 };
 
 /* ============ Rakz — boot ============ */

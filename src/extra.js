@@ -138,10 +138,10 @@ function invRow(x) {
   const st = invState(x); const paid = invPaid(x);
   return `<tr><td class="primary-cell"><div class="t">${esc(x.desc || "مطالبة")}</div><div class="ref">${esc(x.no || "")} · ${fmtDate(x.date)}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td>
     <td data-label="الإجمالي" class="num">${money(x.total)}</td><td data-label="المسدد" class="num">${money(paid)}</td><td data-label="الاستحقاق" class="num">${x.due ? fmtDate(x.due) : "—"}</td><td data-label="الحالة">${pill(st.t, st.c)}</td>
-    <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${st.k !== "paid" && st.k !== "void" ? `<button class="btn sm" data-act="newPayment" data-inv="${x.id}">${icon("plus")}دفعة</button>` : ""}<button class="btn sm ghost" data-act="invoiceDoc" data-id="${x.id}" title="مستند المطالبة">${icon("docs")}</button><button class="btn sm ghost" data-act="editFin" data-id="${x.id}" title="تعديل">${icon("edit")}</button></div></td></tr>`;
+    <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${st.k !== "paid" && st.k !== "void" ? `<button class="btn sm" data-act="newPayment" data-inv="${x.id}">${icon("plus")}دفعة</button>` : ""}<button class="btn sm ghost" data-act="sendInvoice" data-id="${x.id}" title="إرسال للعميل (واتساب / بريد)${x.sentAt ? ` — أُرسلت ${fmtWhen(x.sentAt)}` : ""}">${icon("send")}</button><button class="btn sm ghost" data-act="invoiceDoc" data-id="${x.id}" title="مستند المطالبة">${icon("docs")}</button><button class="btn sm ghost" data-act="editFin" data-id="${x.id}" title="تعديل">${icon("edit")}</button></div></td></tr>`;
 }
 const invTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>المطالبة</th><th>العميل</th><th>الإجمالي</th><th>المسدد</th><th>الاستحقاق</th><th>الحالة</th><th></th></tr></thead><tbody>${rows.map(invRow).join("")}</tbody></table></div>` : "";
-const payTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الدفعة</th><th>العميل</th><th>المبلغ</th><th>الطريقة</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t">${fmtDate(x.date)}</div><div class="ref">${x.invoiceId ? esc(byId(S.data.finance, x.invoiceId)?.no || "") : "دفعة مقدمة"}${x.ref ? " · " + esc(x.ref) : ""}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td><td data-label="المبلغ" class="num">${money(x.amount)}</td><td data-label="الطريقة">${esc(x.method || "")}</td><td data-noact="1"><button class="btn sm ghost" data-act="editFin" data-id="${x.id}">${icon("edit")}</button></td></tr>`).join("")}</tbody></table></div>` : "";
+const payTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الدفعة</th><th>العميل</th><th>المبلغ</th><th>الطريقة</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t">${fmtDate(x.date)}</div><div class="ref">${x.invoiceId ? esc(byId(S.data.finance, x.invoiceId)?.no || "") : "دفعة مقدمة"}${x.ref ? " · " + esc(x.ref) : ""}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td><td data-label="المبلغ" class="num">${money(x.amount)}</td><td data-label="الطريقة">${esc(x.method || "")}</td><td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${receiptBtn(x)}<button class="btn sm ghost" data-act="editFin" data-id="${x.id}">${icon("edit")}</button></div></td></tr>`).join("")}</tbody></table></div>` : "";
 const expTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>المصروف</th><th>القضية</th><th>المبلغ</th><th>على العميل</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t">${esc(x.category || "")}${x.desc ? " — " + esc(x.desc) : ""}</div><div class="ref">${fmtDate(x.date)}</div></td><td data-label="القضية">${esc(caseById(x.caseId)?.title || "—")}</td><td data-label="المبلغ" class="num">${money(x.amount)}</td><td data-label="على العميل">${x.billable ? pill("نعم", "gold") : pill("لا", "plain")}</td><td data-noact="1"><button class="btn sm ghost" data-act="editFin" data-id="${x.id}">${icon("edit")}</button></td></tr>`).join("")}</tbody></table></div>` : "";
 
 VIEWS.finance = () => {
@@ -209,14 +209,16 @@ function paymentForm(x = {}) {
     <div class="field"><label for="pm-date">التاريخ</label><input id="pm-date" class="inp" type="date" name="date" value="${esc(x.date || todayStr())}"></div>
     <div class="field"><label for="pm-m">طريقة السداد</label><select id="pm-m" class="inp" name="method">${PAY_METHODS.map((m) => opt(m, m, x.method)).join("")}</select></div>
     <div class="field"><label for="pm-ref">المرجع</label><input id="pm-ref" class="inp" name="ref" value="${esc(x.ref)}" placeholder="رقم الحوالة أو الشيك"></div>
+    <div class="field span2"><label for="pm-rcpt">الإيصال (صورة أو PDF)</label><input id="pm-rcpt" class="inp" type="file" accept="image/*,.pdf" data-ch="pmReceipt">${x.receipt ? `<span class="hint">المرفق الحالي: ${esc(x.receipt.name)} — اختر ملفًا جديدًا لاستبداله.</span>` : `<span class="hint">يُحفظ مستندًا مع الدفعة، ولا يطّلع عليه إلا المدير.</span>`}</div>
     ${x.id ? `<label class="chk span2"><input type="checkbox" name="remove" value="1"> حذف هذه الدفعة</label>` : ""}</form>`;
 }
-A.newPayment = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); modal("تسجيل دفعة", paymentForm({ invoiceId: el.dataset.inv || "", caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
+A.newPayment = (el) => { if (!guardWrite()) return; if (!isManager()) return toast("الشؤون المالية من صلاحية المدير.", true); S.pmReceipt = null; modal("تسجيل دفعة", paymentForm({ invoiceId: el.dataset.inv || "", caseId: el.dataset.case || "" }), `<button class="btn primary" type="submit" form="fin-form">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`); };
 F.savePayment = async (d) => {
   const inv = byId(S.data.finance, d.invoiceId);
   const data = { type: "payment", invoiceId: d.invoiceId, clientId: d.clientId || inv?.clientId || "", caseId: d.caseId || inv?.caseId || "", amount: num(d.amount), date: d.date, method: d.method, ref: d.ref };
-  let id = d.id; const gone = d.id && d.remove === "1";
-  if (gone) await del(`finance/${d.id}`);
+  let id = d.id; const gone = d.id && d.remove === "1"; const old = d.id ? byId(S.data.finance, d.id) : null;
+  if (!gone) { try { await attachReceipt(data, old); } catch (e) { return fileErr(e, "الإيصال"); } }
+  if (gone) { await del(`finance/${d.id}`); if (old?.receipt?.assetId) { try { await S.caps.assets.delete(old.receipt.assetId); } catch (e) { console.warn(e); } } }
   else if (d.id) await upd(`finance/${d.id}`, data);
   else { data.no = finNo("payment"); id = await add("finance", data); if (data.caseId) await logCase(data.caseId, "note", `استُلمت دفعة ${money(data.amount)} ر.س (${d.method})`); }
   await syncJournal("payment", id, gone ? null : data, `دفعة من ${clientName(data.clientId)}${data.ref ? " — " + data.ref : ""}`);
@@ -243,7 +245,7 @@ F.saveExpense = async (d) => {
   closeModal(); toast("حُفظ المصروف");
 };
 A.editFin = (el) => {
-  const x = byId(S.data.finance, el.dataset.id); if (!x) return;
+  const x = byId(S.data.finance, el.dataset.id); if (!x) return; S.pmReceipt = null;
   const [t, f, form] = x.type === "invoice" ? ["تعديل المطالبة", "fin-form", invoiceForm(x)] : x.type === "payment" ? ["تعديل الدفعة", "fin-form", paymentForm(x)] : ["تعديل المصروف", "fin-form", expenseForm(x)];
   modal(t, form, `<button class="btn primary" type="submit" form="${f}">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
 };
@@ -275,7 +277,7 @@ ${x.note ? `\n${x.note}` : ""}
 
 !| ${f.nameAr} |
 !| التوقيع والختم: ........................ |`;
-  const id = await add("docs", { kind: "invoice", title: `مطالبة مالية ${x.no} — ${cl.name || ""}`, caseId: x.caseId || "", clientId: x.clientId, body, status: "draft", updatedAt: nowIso() });
+  const id = await add("docs", { kind: "invoice", finId: x.id, title: `مطالبة مالية ${x.no} — ${cl.name || ""}`, caseId: x.caseId || "", clientId: x.clientId, body, status: "draft", updatedAt: nowIso() });
   go("doc", id);
 };
 
@@ -324,6 +326,7 @@ F.saveConsult = async (d) => {
 };
 VIEWS.consult = () => {
   const x = byId(S.data.consults, S.route.id);
+  if (x) subscribeConsult(x.id);
   if (!x) return S.loaded.consults ? `<div class="card">${emptyBox("chat", "لم نجد الاستشارة", "", `<button class="btn" data-act="go" data-r="consults">العودة</button>`)}</div>` : `<div class="thinking">جارٍ التحميل…</div>`;
   const gen = S.gen?.kind === "consult" && S.gen.id === x.id; const key = "csa." + x.id; const ans = gen ? S.gen.text : S.drafts[key] ?? x.answer ?? "";
   const phone = x.phone || byId(S.data.clients, x.clientId)?.phone;
@@ -334,16 +337,15 @@ VIEWS.consult = () => {
       <div class="fact"><div class="k">المستشار</div><div class="v">${x.lawyerId ? esc(lawyerName(x.lawyerId)) : isManager() ? `<a data-act="editConsult" data-id="${x.id}" style="cursor:pointer">إسناد</a>` : "بانتظار إسناد المدير"}</div></div>${isManager() ? `<div class="fact"><div class="k">الأتعاب</div><div class="v num">${x.fee ? money(x.fee) + " ر.س" : "—"}</div></div>` : ""}</div></div>
   <div class="cols"><div class="stack">
     <div class="card"><div class="card-h"><h3>الرأي القانوني</h3><div class="row">${gen ? `<span class="thinking small">يكتب المساعد…</span><button class="btn sm" data-act="stopGen">إيقاف</button>` : S.caps.sample ? `<button class="btn sm gold" data-act="genOpinion" data-id="${x.id}">${icon("spark")}${ans ? "إعادة الصياغة" : "صياغة المسودة"}</button>` : ans ? "" : `<button class="btn sm gold" data-act="opinionTemplate" data-id="${x.id}">${icon("docs")}أدرج هيكل الرأي</button>`}</div></div>
-      <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" data-live="csLive" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
+      <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
       <div class="row" style="margin-top:10px"><button class="btn primary" data-act="saveAnswer" data-id="${x.id}">${icon("check")}حفظ</button><button class="btn" data-act="opinionDoc" data-id="${x.id}">${icon("docs")}مستند Word بترويسة المكتب</button>
-        <a id="cs-wa" class="btn" href="${esc(waHref(phone, ans))}" target="_blank" rel="noopener">${icon("wa")}إرسال واتساب</a></div></div></div>
+        <button class="btn" data-act="sendConsult" data-id="${x.id}">${icon("send")}إرسال للعميل (واتساب / بريد)</button></div></div>${consultFilesCard(x)}</div>
     <div class="stack">${feeCard("consultId", x)}<div class="card"><div class="card-h"><h3>السؤال والوقائع</h3></div><div class="prose">${esc(x.question || "")}</div></div>
       <div class="card"><div class="card-h"><h3>إجراءات</h3></div><div class="stack" style="gap:8px">
         ${x.caseId ? `<button class="btn" data-act="openCase" data-id="${x.caseId}">${icon("cases")}فتح القضية المرتبطة</button>` : `<button class="btn" data-act="consultToCase" data-id="${x.id}">${icon("cases")}تحويل إلى قضية</button>`}
         ${isManager() ? `<button class="btn" data-act="newInvoice" data-consult="${x.id}">${icon("receipt")}مطالبة بالأتعاب</button>` : ""}
         <button class="btn danger" data-act="deleteConsult" data-id="${x.id}">${icon("trash")}حذف</button></div></div></div></div>`;
 };
-CH.csLive = () => { const a = $("#cs-wa"); const x = byId(S.data.consults, S.route.id); if (a && x) a.href = waHref(x.phone || byId(S.data.clients, x.clientId)?.phone, $("#cs-answer").value); };
 CH.consultStatus = async (el) => { await upd(`consults/${el.dataset.id}`, { status: el.value, ...(el.value === "done" ? { doneAt: nowIso() } : {}) }); if (el.value === "done") { for (const t of S.data.tasks.filter((t) => t.consultId === el.dataset.id && t.status !== "done")) await upd(`tasks/${t.id}`, { status: "done", doneAt: nowIso() }); } toast("حُدّثت الحالة"); };
 A.opinionTemplate = (el) => {
   const x = byId(S.data.consults, el.dataset.id); const B0 = "[........]";
@@ -383,7 +385,8 @@ A.saveAnswer = async (el) => { const x = byId(S.data.consults, el.dataset.id); a
 A.genOpinion = async (el) => {
   if (!needSample()) return;
   const x = byId(S.data.consults, el.dataset.id);
-  const laws = await lawContext([x.field, x.subject, x.question].join(" "), 10);
+  const docs = consultDocsText(x);
+  const laws = await lawContext([x.field, x.subject, x.question, docs.slice(0, 1500)].join(" "), 12);
   const prompt = `أنت مستشار قانوني سعودي أول في «${S.firm.nameAr}». اكتب مذكرة رأي قانوني مهنية ردًا على الاستشارة التالية، وفق الأنظمة السارية في المملكة العربية السعودية.
 تاريخ اليوم: ${todayStr()} الموافق ${fmtHijri(todayStr())}.
 نوع الاستشارة: ${x.type} — المجال: ${x.field}
@@ -392,7 +395,7 @@ A.genOpinion = async (el) => {
 """
 ${x.question}
 """
-${JURIS_GUIDE}
+${docs}${JURIS_GUIDE}
 ${laws}
 
 الهيكل والصيغة (عناوين تبدأ بـ "## "، قوائم مرقمة "1. "، نقاط "- "، بلا ** ولا ###):

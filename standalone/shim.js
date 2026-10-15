@@ -134,7 +134,7 @@
   /* ---------- assets ---------- */
   const assets = {
     async upload(blob, opts = {}) {
-      const id = newId() + newId().slice(0, 12); const type = opts.type || blob.type || "application/octet-stream";
+      const id = (opts.folder ? opts.folder.replace(/[^a-z0-9_-]/gi, "") + "/" : "") + newId() + newId().slice(0, 12); const type = opts.type || blob.type || "application/octet-stream";
       const { error } = await sb.storage.from("files").upload(id, blob, { contentType: type, upsert: false });
       if (error) throw err(/size|large/i.test(error.message) ? "too_large" : "upstream_error", error.message);
       return { id, url: await assets.signedUrl(id), sizeBytes: blob.size, contentType: type };
@@ -146,7 +146,7 @@
 
   /* ---------- law library (tables law_sources / law_articles, RPC search_laws) ---------- */
   if (sb) window.RAKZ_LAWS = {
-    async list() { const { data, error } = await sb.from("law_sources").select("*").order("name"); if (error) throw error; return data || []; },
+    async list() { const { data, error } = await sb.from("law_sources").select("*").order("ord", { nullsFirst: false }).order("name"); if (error) throw error; return data || []; },
     async articles(slug) { const { data, error } = await sb.from("law_articles").select("article,num,body").eq("law_slug", slug).order("num").limit(3000); if (error) throw error; return data || []; },
     async search(q, k = 8, law = null) { const { data, error } = await sb.rpc("search_laws", { p_q: q, p_k: k, p_law: law }); if (error) throw error; return data || []; },
     async save(src, articles) {

@@ -74,13 +74,13 @@ async function fetchOriginal(f) {
   return new File([await r.blob()], f.name, { type: f.mime });
 }
 A.viewFile = async (el) => {
-  const f = byId(S.caseFiles, el.dataset.id); if (!f) return;
+  const f = anyFile(el.dataset.id); if (!f) return;
   const src = await assetSrc(f.assetId);
   const body = f.mime?.startsWith("image/") ? `<img src="${src}" alt="${esc(f.name)}" style="max-width:100%">` : f.mime === "application/pdf" ? `<iframe src="${src}" title="${esc(f.name)}"></iframe>` : f.text ? `<div class="paper" style="min-height:auto;white-space:pre-wrap">${esc(f.text)}</div>` : `<p>لا تتوفر معاينة لهذا النوع. استخدم «تنزيل».</p>`;
   modal(esc(f.name), body, `<button class="btn primary" data-act="downloadFile" data-id="${f.id}">${icon("download")}تنزيل</button><button class="btn ghost" data-act="closeModal">إغلاق</button>`, true);
 };
 A.downloadFile = async (el) => {
-  const f = byId(S.caseFiles, el.dataset.id);
+  const f = anyFile(el.dataset.id); if (!f) return;
   if (!S.caps.downloads) return toast("التنزيل غير متاح في هذا العرض.", true);
   try { const file = await fetchOriginal(f); await S.caps.downloads.save({ filename: f.name, data: file }); }
   catch (e) { if (e?.code !== "declined") toast(e?.code === "rejected_extension" ? "هذا النوع من الملفات لا يمكن تنزيله من المنصة." : "تعذّر التنزيل.", true); }

@@ -22,14 +22,15 @@ function splitArticles(text) {
 const slugify = (name) => "law-" + Array.from(new TextEncoder().encode(name)).reduce((h, b) => (h * 31 + b) >>> 0, 7).toString(36);
 
 /* Relevant articles for a prompt. Empty string when the library is unavailable or empty. */
-async function lawContext(query, k = 8) {
+const lawLabel = (r) => r.parent_name ? `${r.law_name} (${r.kind || "لائحة"} تابعة لـ${r.parent_name})` : r.law_name;
+async function lawContext(query, k = 10) {
   const L = LAWS(); if (!L || !query) return "";
   try {
     const rows = await L.search(String(query).slice(0, 2500), k);
     if (!rows.length) return "";
-    return `\nالمواد النظامية ذات الصلة من المكتبة النظامية للمكتب (نصوص رسمية بآخر تعديل مسجل فيها):
-${rows.map((r) => `• ${r.law_name} — ${r.article}: ${String(r.body).slice(0, 1400)}`).join("\n")}
-عند الإحالة استند إلى هذه النصوص واذكر اسم النظام ورقم المادة كما وردا فيها. لا تنسب إلى مادة نصًا لم يرد هنا؛ وما احتجت إليه من غيرها فاكتب بجانبه (يُتحقق من رقم المادة).\n`;
+    return `\nالمواد النظامية ذات الصلة من المكتبة النظامية للمكتب (أنظمة ولوائحها التنفيذية وقواعدها، نصوص رسمية بآخر تعديل مسجل فيها):
+${rows.map((r) => `• ${lawLabel(r)}${r.status ? ` [${r.status}]` : ""} — ${r.article}: ${String(r.body).slice(0, 1400)}`).join("\n")}
+عند الإحالة استند إلى هذه النصوص واذكر اسم النظام أو اللائحة ورقم المادة كما وردا فيها، وقدّم نص النظام ثم ما تفصّله لائحته (مثل: المادة 3 من النظام والمادة 3/1 من لائحته التنفيذية). راعِ حالة النفاذ المذكورة بين المعقوفين. لا تنسب إلى مادة نصًا لم يرد هنا؛ وما احتجت إليه من غيرها فاكتب بجانبه (يُتحقق من رقم المادة).\n`;
   } catch (e) { console.warn("law search", e); return ""; }
 }
 
@@ -38,23 +39,31 @@ VIEWS.laws = () => {
   if (!L) return `<div class="page-head"><div><h1>المكتبة النظامية</h1></div></div><div class="card">${emptyBox("scale", "المكتبة متاحة في نسخة المنصة المستقلة", "افتحها من رابط GitHub Pages الخاص بالمكتب.")}</div>`;
   if (!S.lawList && !S.lawLoading) { S.lawLoading = true; L.list().then((x) => { S.lawList = x; }).catch(() => { S.lawList = []; toast("تعذّر تحميل المكتبة", true); }).finally(() => { S.lawLoading = false; render(); }); }
   const list = S.lawList || []; const total = list.reduce((s, l) => s + (l.articles || 0), 0);
+  const mains = list.filter((l) => !l.parent || !list.some((x) => x.slug === l.parent)); const kids = (slug) => list.filter((l) => l.parent === slug);
   const res = S.lawResults;
-  return `<div class="page-head"><div><h1>المكتبة النظامية</h1><p>${list.length} نظامًا · ${total} مادة. يقرأ المساعد منها المواد ذات الصلة قبل أن يحلل أو يصوغ.</p></div>
-    <div class="row"><button class="btn" data-act="importCore" ${S.lawImport ? "disabled" : ""}>${icon("download")}${S.lawImport ? esc(S.lawImport) : "استيراد الأنظمة الأساسية"}</button><button class="btn gold" data-act="addLaw">${icon("plus")}إضافة نظام أو تحديثه</button></div></div>
+  return `<div class="page-head"><div><h1>المكتبة النظامية</h1><p>${mains.length} نظامًا و${list.length - mains.length} لائحة وقواعد تابعة · ${total} مادة. يقرأ المساعد منها النظام ولوائحه ذات الصلة قبل أن يحلل أو يصوغ.</p></div>
+    <div class="row"><button class="btn" data-act="importCore" ${S.lawImport ? "disabled" : ""}>${icon("download")}${S.lawImport ? esc(S.lawImport) : "استيراد المكتبة الرسمية"}</button><button class="btn gold" data-act="addLaw">${icon("plus")}إضافة نظام أو لائحة</button></div></div>
   <form class="row" data-form="lawSearch"><input id="law-q" class="inp grow" name="q" value="${esc(S.lawQ || "")}" placeholder="ابحث في المواد: مهلة الاعتراض، الاختصاص المكاني، مكافأة نهاية الخدمة…" style="min-width:220px"><button class="btn primary" type="submit">${icon("search")}بحث</button>${res ? `<button class="btn ghost" type="button" data-act="lawClear">مسح</button>` : ""}</form>
-  ${res ? `<div class="card"><div class="card-h"><h3>نتائج «${esc(S.lawQ)}»</h3><span class="sub num">${res.length}</span></div>${res.length ? `<div class="list">${res.map((r) => `<div class="li" style="align-items:flex-start"><div class="body"><div class="ttl">${esc(r.law_name)} — ${esc(r.article)}</div><div class="prose small" style="margin-top:4px">${esc(r.body)}</div></div></div>`).join("")}</div>` : emptyBox("search", "لا توجد مواد مطابقة", "جرّب كلمات أخرى أو أضف النظام المعني إلى المكتبة.")}</div>` : ""}
+  ${res ? `<div class="card"><div class="card-h"><h3>نتائج «${esc(S.lawQ)}»</h3><span class="sub num">${res.length}</span></div>${res.length ? `<div class="list">${res.map((r) => `<div class="li" style="align-items:flex-start"><div class="body"><div class="ttl">${esc(lawLabel(r))} — ${esc(r.article)}</div><div class="prose small" style="margin-top:4px">${esc(r.body)}</div></div></div>`).join("")}</div>` : emptyBox("search", "لا توجد مواد مطابقة", "جرّب كلمات أخرى أو أضف النظام المعني إلى المكتبة.")}</div>` : ""}
   ${S.lawView ? lawArticlesCard() : ""}
-  ${S.lawLoading && !S.lawList ? `<div class="thinking">جارٍ التحميل…</div>` : list.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>النظام</th><th>المواد</th><th>الإصدار</th><th>آخر تعديل مسجل</th><th></th></tr></thead><tbody>
-    ${list.map((l) => `<tr data-act="lawOpen" data-id="${esc(l.slug)}"><td class="primary-cell"><div class="t">${esc(l.name)}</div>${l.source_url ? `<div class="ref"><a href="${esc(l.source_url)}" target="_blank" rel="noopener" data-noact="1">المصدر الرسمي</a></div>` : ""}</td><td data-label="المواد" class="num">${l.articles}</td><td data-label="الإصدار">${esc(l.issued || "—")}</td><td data-label="آخر تعديل">${esc(l.updated || "—")}</td>
-      <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm ghost" data-act="addLaw" data-id="${esc(l.slug)}" title="تحديث النص">${icon("edit")}</button><button class="btn sm ghost danger" data-act="lawRemove" data-id="${esc(l.slug)}" title="حذف">${icon("trash")}</button></div></td></tr>`).join("")}</tbody></table></div>`
-    : `<div class="card">${emptyBox("scale", "المكتبة فارغة", "ابدأ باستيراد الأنظمة الأساسية (11 نظامًا من هيئة الخبراء بمجلس الوزراء)، ثم أضف ما يحتاجه المكتب من ملف PDF أو Word أو نص ملصوق.", `<button class="btn gold" data-act="importCore">${icon("download")}استيراد الأنظمة الأساسية</button>`)}</div>`}`;
+  ${S.lawLoading && !S.lawList ? `<div class="thinking">جارٍ التحميل…</div>` : list.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>النظام ولوائحه</th><th>المواد</th><th>الإصدار</th><th>الحالة</th><th></th></tr></thead><tbody>
+    ${mains.map((l) => { const ch = kids(l.slug); const open = S.lawFam === l.slug; return lawRow(l, false, ch.length, open) + (open ? ch.map((c) => lawRow(c, true)).join("") : ""); }).join("")}</tbody></table></div>`
+    : `<div class="card">${emptyBox("scale", "المكتبة فارغة", "ابدأ باستيراد المكتبة الرسمية (الأنظمة ولوائحها التنفيذية وقواعدها من هيئة الخبراء بمجلس الوزراء والبوابة القانونية لوزارة العدل)، ثم أضف ما يحتاجه المكتب من ملف PDF أو Word أو نص ملصوق.", `<button class="btn gold" data-act="importCore">${icon("download")}استيراد المكتبة الرسمية</button>`)}</div>`}`;
 };
+function lawRow(l, child, nKids = 0, open = false) {
+  return `<tr data-act="lawOpen" data-id="${esc(l.slug)}"${child ? ' class="law-child"' : ""}><td class="primary-cell"><div class="t">${child ? "└ " : ""}${esc(l.name)} ${l.kind && l.kind !== "نظام" ? `<span class="pill">${esc(l.kind)}</span>` : ""}</div>
+      <div class="ref">${nKids ? `<button class="btn sm ghost" data-act="lawFam" data-id="${esc(l.slug)}" data-noact="1">${open ? "إخفاء" : "عرض"} ${nKids} من اللوائح والقواعد</button> ` : ""}${l.source_url ? `<a href="${esc(l.source_url)}" target="_blank" rel="noopener" data-noact="1">المصدر الرسمي</a>` : ""}</div></td>
+      <td data-label="المواد" class="num">${l.articles}</td><td data-label="الإصدار">${esc(l.issued || "—")}</td><td data-label="الحالة">${l.status ? `<span class="pill warn">${esc(l.status)}</span>` : `<span class="pill ok">ساري</span>`}</td>
+      <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm ghost" data-act="addLaw" data-id="${esc(l.slug)}" title="تحديث النص">${icon("edit")}</button><button class="btn sm ghost danger" data-act="lawRemove" data-id="${esc(l.slug)}" title="حذف">${icon("trash")}</button></div></td></tr>`;
+}
+A.lawFam = (el) => { S.lawFam = S.lawFam === el.dataset.id ? null : el.dataset.id; render(); };
 function lawArticlesCard() {
   const v = S.lawView;
   return `<div class="card"><div class="card-h"><h3>${esc(v.name)}</h3><button class="btn sm ghost" data-act="lawClose">${icon("x")}إغلاق</button></div>
     ${v.rows ? `<div class="list">${v.rows.map((a) => `<div class="li" style="align-items:flex-start"><div class="body"><div class="ttl">${esc(a.article)}</div><div class="prose small">${esc(a.body)}</div></div></div>`).join("")}</div>` : `<div class="thinking">جارٍ التحميل…</div>`}</div>`;
 }
-/* The core laws extracted from laws.boe.gov.sa by tools/boe_laws.py, published as docs/laws/core.json. */
+/* The official library built by tools/law_library.py (laws.boe.gov.sa + laws.moj.gov.sa), published as docs/laws/core.json.
+   Entries come in family order: each main law followed by its regulations (`parent` = the main law's slug). */
 A.importCore = async () => {
   const L = LAWS(); if (!L || S.lawImport) return;
   S.lawImport = "جارٍ التحميل…"; render();
@@ -63,10 +72,11 @@ A.importCore = async () => {
     const entries = Object.entries(pack.laws || {}); let n = 0, arts = 0;
     for (const [slug, law] of entries) {
       S.lawImport = `${++n}/${entries.length}: ${law.name}`; render();
-      await L.save({ slug: "boe-" + slug, name: law.name, source_url: law.url, issued: law.issued, updated: `مستخرج من البوابة الرسمية ${pack.extracted}` }, law.articles);
+      await L.save({ slug: "boe-" + slug, name: law.name, source_url: law.url, issued: law.issued, updated: `${law.source || "البوابة الرسمية"} ${pack.extracted}`,
+        kind: law.kind || "نظام", parent: law.parent ? "boe-" + law.parent : null, ord: n, status: law.status || null }, law.articles);
       arts += law.articles.length;
     }
-    toast(`استُورد ${entries.length} نظامًا (${arts} مادة) من هيئة الخبراء بمجلس الوزراء`);
+    toast(`استُورد ${entries.length} نظامًا ولائحة (${arts} مادة) من المصادر الرسمية`);
   } catch (e) { console.error(e); toast("تعذّر الاستيراد: " + (e.message || ""), true); }
   finally { S.lawImport = null; S.lawList = null; render(); }
 };
@@ -81,6 +91,8 @@ A.addLaw = (el) => {
   S.lawDraft = { text: "" };
   modal(l.slug ? "تحديث نص النظام" : "إضافة نظام إلى المكتبة", `<form id="law-form" data-form="saveLaw" class="stack" style="gap:12px"><input type="hidden" name="slug" value="${esc(l.slug || "")}">
     <div class="field"><label for="lw-name" class="req">اسم النظام</label><input id="lw-name" class="inp" name="name" required value="${esc(l.name || "")}" placeholder="مثال: نظام المرافعات الشرعية"></div>
+    <div class="grid2"><div class="field"><label for="lw-kind">النوع</label><select id="lw-kind" class="inp" name="kind">${["نظام", "لائحة تنفيذية", "لائحة", "قواعد", "ضوابط", "أدلة إجرائية", "آلية", "تنظيم", "تعميم"].map((k) => `<option${(l.kind || "نظام") === k ? " selected" : ""}>${k}</option>`).join("")}</select></div>
+      <div class="field"><label for="lw-parent">يتبع النظام (للوائح)</label><select id="lw-parent" class="inp" name="parent"><option value="">— نظام رئيسي —</option>${(S.lawList || []).filter((x) => !x.parent && x.slug !== l.slug).map((x) => `<option value="${esc(x.slug)}"${l.parent === x.slug ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div></div>
     <div class="grid2"><div class="field"><label for="lw-iss">تاريخ الإصدار / المرسوم</label><input id="lw-iss" class="inp" name="issued" value="${esc(l.issued || "")}" placeholder="م/1 بتاريخ 22/1/1435هـ"></div>
       <div class="field"><label for="lw-upd">آخر تعديل مضمّن</label><input id="lw-upd" class="inp" name="updated" value="${esc(l.updated || "")}" placeholder="تاريخ آخر تعديل في النص"></div></div>
     <div class="field"><label for="lw-src">رابط المصدر الرسمي</label><input id="lw-src" class="inp" name="source_url" dir="ltr" value="${esc(l.source_url || "")}" placeholder="https://laws.boe.gov.sa/..."></div>
@@ -104,7 +116,7 @@ F.saveLaw = async (d) => {
   const arts = splitArticles(d.text || "");
   if (!arts.length) return toast("لم أجد مواد في النص. تأكد أن كل مادة تبدأ بسطر «المادة …».", true);
   const name = d.name.trim(); const slug = d.slug || slugify(name);
-  try { await LAWS().save({ slug, name, source_url: d.source_url.trim(), issued: d.issued.trim(), updated: d.updated.trim() }, arts); }
+  try { await LAWS().save({ slug, name, source_url: d.source_url.trim(), issued: d.issued.trim(), updated: d.updated.trim(), kind: d.kind || "نظام", parent: d.parent || null }, arts); }
   catch (e) { console.error(e); return toast("تعذّر الحفظ: " + (e.message || ""), true); }
   closeModal(); S.lawList = null; toast(`حُفظ «${name}»: ${arts.length} مادة`); render();
 };

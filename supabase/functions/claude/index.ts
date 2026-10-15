@@ -5,14 +5,15 @@
 // then {"done": true, "stop": "<stop_reason>"} or {"error": "<code>"}.
 import Anthropic from "npm:@anthropic-ai/sdk";
 
-// Model chosen by the firm for cost/quality balance. The app asks for a tier; effort controls depth.
-const MODEL = "claude-sonnet-5-5";
+// The firm's choice: the most capable model. The app asks for a tier; effort controls depth and cost.
+const MODEL = "claude-opus-5-5";
 const EFFORT: Record<string, "low" | "medium" | "high"> = { quick: "low", default: "medium", complex: "high" };
 
 const SYSTEM =
   "أنت المساعد القانوني لمنصة «ركز النظامية للمحاماة والاستشارات القانونية» في المملكة العربية السعودية. " +
   "اكتب بالعربية الفصحى المهنية، والتزم حرفيًا بالصيغة التي يطلبها المستخدم في كل طلب. " +
-  "لا تخترع وقائع أو أرقام مواد غير متيقن منها؛ ضع [........] لما ينقص.";
+  "لا تخترع وقائع أو أرقام مواد غير متيقن منها؛ ضع [........] لما ينقص. " +
+  "إذا أُرفقت مواد من المكتبة النظامية فهي النصوص الرسمية المعتمدة: استند إلى النظام ثم إلى لائحته التنفيذية وقواعده التي تفصّله، وراعِ حالة النفاذ.";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
