@@ -30,17 +30,21 @@ VIEWS.dashboard = () => {
     { done: S.data.cases.length > 0, t: "افتح أول قضية", d: "ثم ارفع مرفقاتها ليقرأها المساعد", act: "newCase" },
   ];
   return `
-  <div class="page-head"><div><h1>${greet}${me ? "، " + esc(me.name.split(" ")[0]) : ""}</h1>
-    <p>${fmtDate(todayStr(), true)} · <span class="num">${esc(fmtHijri(todayStr()))}</span></p></div>
-    <div class="row"><button class="btn" data-act="newTask">${icon("plus")}مهمة أو موعد</button><button class="btn" data-act="go" data-r="drafting">${icon("docs")}صياغة مستند</button></div></div>
-  ${steps.some((s) => !s.done) ? `<div class="card"><div class="card-h"><h3>تهيئة المنصة</h3><span class="sub">${steps.filter((s) => s.done).length} من 4</span></div>
-    <div class="onb">${steps.map((s, i) => `<div class="step ${s.done ? "done" : ""}" data-act="${s.act || "go"}" data-r="${s.r || ""}"><span class="n">${s.done ? "✓" : i + 1}</span><b>${s.t}</b><span class="muted small">${s.d}</span></div>`).join("")}</div></div>` : ""}
-  <div class="kpis">
+  <section class="hero"><div>
+      <span class="eyebrow">${fmtDate(todayStr(), true)} · <span class="num">${esc(fmtHijri(todayStr()))}</span></span>
+      <h1>${greet}${me ? "، " + esc(me.name.split(" ")[0]) : ""}</h1>
+      <p>${act.length ? `بين يديك ${act.length} ${act.length > 10 || act.length < 3 ? "قضية" : "قضايا"} منظورة${week.length ? `، و${week.length} ${week.length === 1 ? "جلسة" : "جلسات"} خلال الأسبوع` : ""}${late.length ? `، و${late.length} ${late.length === 1 ? "مهمة متأخرة تحتاج" : "مهام متأخرة تحتاج"} انتباهك` : ""}.` : "مرحبًا بك في منصة ركز لإدارة القضايا والاستشارات."}</p>
+      <div class="row"><button class="btn gold" data-act="newTask">${icon("plus")}مهمة أو موعد</button><button class="btn" data-act="go" data-r="drafting">${icon("docs")}صياغة مستند</button></div></div>
+    <div class="kpis">
     <button class="kpi" data-act="go" data-r="cases"><span class="lbl">القضايا المنظورة</span><span class="val">${act.length}</span><span class="foot">${S.data.cases.filter((c) => c.status === "intake").length} قيد الدراسة</span></button>
     <button class="kpi attn" data-act="go" data-r="tasks"><span class="lbl">جلسات خلال 7 أيام</span><span class="val">${week.length}</span><span class="foot">${week[0] ? "أقربها " + fmtDate(week[0].due) : "لا جلسات قريبة"}</span></button>
     <button class="kpi ${late.length ? "alert" : ""}" data-act="go" data-r="tasks"><span class="lbl">مهام متأخرة</span><span class="val">${late.length}</span><span class="foot">${lateMine.length} منها لك</span></button>
     <button class="kpi ${pend.length ? "attn" : ""}" data-act="go" data-r="assign"><span class="lbl">إسنادات بانتظار القبول</span><span class="val">${pend.length || pendAll.length}</span><span class="foot">${pend.length ? "بانتظار ردّك" : `${pendAll.length} في المكتب`}</span></button>
   </div>
+  </section>
+  ${steps.some((s) => !s.done) ? `<div class="card"><div class="card-h"><h3>تهيئة المنصة</h3><span class="sub">${steps.filter((s) => s.done).length} من 4</span></div>
+    <div class="onb">${steps.map((s, i) => `<div class="step ${s.done ? "done" : ""}" data-act="${s.act || "go"}" data-r="${s.r || ""}"><span class="n">${s.done ? "✓" : i + 1}</span><b>${s.t}</b><span class="muted small">${s.d}</span></div>`).join("")}</div></div>` : ""}
+
   <div class="cols">
     <div class="stack">
       <div class="card"><div class="card-h"><h3>الجلسات والمواعيد القادمة</h3><span class="sub">14 يومًا</span></div>

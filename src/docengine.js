@@ -167,3 +167,51 @@ async function buildDocx(title, body) {
   zip.file("word/media/icon.png", LOGO.iconLight.split(",")[1], { base64: true });
   return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
 }
+
+/* ---------- PDF: the browser's own print engine renders Arabic perfectly, so a document is laid out
+   on A4 in a hidden frame and handed to «Print → Save as PDF» (on iPhone: Share → Save to Files). ---------- */
+const PRINT_CSS = `@page { size: A4; margin: 16mm 18mm 18mm; @bottom-center { content: counter(page) " / " counter(pages); font: 9pt "IBM Plex Sans Arabic", sans-serif; color: #8a8f99; } }
+* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+html, body { margin: 0; background: #fff; }
+body { font-family: "Noto Naskh Arabic", "Traditional Arabic", serif; font-size: 13pt; line-height: 1.95; color: #1b2433; direction: rtl; }
+.lh { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #A3836B; padding-bottom: 8px; margin-bottom: 20px; }
+.lh img.w { height: 44px; } .lh img.m { height: 56px; }
+h1 { text-align: center; font-size: 18pt; color: #152335; border-bottom: 1.5px solid #A3836B; padding-bottom: 6px; margin: 6px auto 18px; width: fit-content; max-width: 100%; }
+h2 { font-size: 14pt; color: #152335; margin: 16px 0 4px; break-after: avoid; }
+h3 { font-size: 13pt; color: #7A5F4B; margin: 12px 0 4px; break-after: avoid; }
+p { margin: 0 0 7px; text-align: justify; orphans: 3; widows: 3; } p.c { text-align: center; font-weight: 700; color: #152335; }
+ul, ol { padding-inline-start: 24px; margin: 0 0 8px; } li { margin-bottom: 3px; } li::marker { color: #A3836B; font-weight: 700; }
+table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 12pt; table-layout: fixed; break-inside: auto; } tr { break-inside: avoid; }
+td, th { border: 1px solid #cfc6bd; padding: 3px 9px; text-align: start; } th { background: #F1EBE5; }
+table.plain td { border: 0; text-align: center; padding: 2px 8px; } table.plain tr:first-child td { font-weight: 700; color: #152335; }
+table.plain { break-inside: avoid; margin-top: 18px; }
+hr { border: 0; border-top: 1px solid #d8cfc6; margin: 12px 0; }
+mark { background: none; color: inherit; }
+.ft { border-top: 1px solid #e5ddd5; margin-top: 26px; padding-top: 6px; font: 8.5pt "IBM Plex Sans Arabic", sans-serif; color: #6b7280; text-align: center; }`;
+function printHtml(title, body) {
+  const f = S.firm;
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&family=Noto+Naskh+Arabic:wght@400;600;700&display=block">
+<style>${PRINT_CSS}</style></head><body><div class="lh"><img class="w" src="${LOGO.textLight}" alt=""><img class="m" src="${LOGO.iconLight}" alt=""></div>
+${blocksHtml(parseBlocks(body))}<div class="ft">${esc([f.nameAr, f.cr ? "س.ت " + f.cr : "", f.address || f.city, f.phone, f.email, f.website].filter(Boolean).join("  |  "))}</div></body></html>`;
+}
+async function exportPdf(title, body) {
+  document.getElementById("pdf-frame")?.remove();
+  const fr = document.createElement("iframe");
+  fr.id = "pdf-frame"; fr.title = "PDF"; fr.setAttribute("aria-hidden", "true");
+  fr.style.cssText = "position:fixed;width:0;height:0;border:0;inset-inline-start:-9999px;bottom:0";
+  document.body.appendChild(fr);
+  const doc = fr.contentDocument; doc.open(); doc.write(printHtml(title, body)); doc.close();
+  // Wait for the fonts and letterhead images, otherwise the first print falls back to system fonts.
+  await new Promise((r) => (doc.readyState === "complete" ? r() : fr.contentWindow.addEventListener("load", r, { once: true })));
+  try { await Promise.race([doc.fonts.ready, new Promise((r) => setTimeout(r, 3500))]); } catch {}
+  const prev = document.title; document.title = title; // Safari names the PDF after the top page
+  fr.contentWindow.focus(); fr.contentWindow.print();
+  setTimeout(() => { document.title = prev; }, 1500);
+}
+A.exportPdf = async (el) => {
+  const d = byId(S.data.docs, el.dataset.id);
+  const title = ($("#doc-title")?.value || d?.title || "مستند").trim(); const body = $("#doc-body")?.value ?? d?.body ?? "";
+  el.disabled = true; toast("يُجهَّز الملف… اختر «حفظ بصيغة PDF» من نافذة الطباعة");
+  try { await exportPdf(title, body); } catch (e) { console.error(e); toast("تعذّر تجهيز PDF.", true); } finally { el.disabled = false; }
+};

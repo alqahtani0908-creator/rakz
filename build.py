@@ -13,7 +13,7 @@ js = "\n".join(read(src / f) for f in ["core.js", "views.js", "ai.js", "laws.js"
 for k, f in {"__ICON_LIGHT__": "icon_light.png", "__ICON_DARK__": "icon_dark.png", "__TEXT_LIGHT__": "text_light.png", "__TEXT_DARK__": "text_dark.png"}.items():
     js = js.replace(k, uri(f))
 fonts = """<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;600;700&display=swap">"""
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Noto+Naskh+Arabic:wght@400;600;700&display=swap">"""
 body = f"""<style>
 {read(src / "styles.css")}
 </style>

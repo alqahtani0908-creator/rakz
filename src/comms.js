@@ -87,11 +87,11 @@ function sendModal(ctx) {
       <div class="field"><label for="snd-email">البريد الإلكتروني</label><input id="snd-email" class="inp" type="email" dir="ltr" value="${esc(ctx.email || "")}" placeholder="client@example.com"></div></div>
     <div class="field"><label for="snd-subj">الموضوع (للبريد)</label><input id="snd-subj" class="inp" value="${esc(ctx.subject || "")}"></div>
     <div class="field"><label for="snd-text">نص الرسالة</label><textarea id="snd-text" class="inp" rows="11">${esc(ctx.text || "")}</textarea>
-      <span class="hint">${ctx.docBody ? `لإرسال المستند نفسه: ${canShare ? "«مشاركة ملف Word» تفتح قائمة المشاركة في الجوال (واتساب، البريد…) والملف مرفق، أو " : ""}نزّل ملف Word وأرفقه في المحادثة أو البريد.` : "يُفتح واتساب أو تطبيق البريد والرسالة جاهزة، ويُسجَّل الإرسال في ملف القضية."}</span></div></div>`,
+      <span class="hint">${ctx.docBody ? `لإرسال المستند نفسه: ${canShare ? "«مشاركة ملف Word» تفتح قائمة المشاركة في الجوال (واتساب، البريد…) والملف مرفق، أو " : ""}نزّل الملف بصيغة PDF أو Word وأرفقه في المحادثة أو البريد.` : "يُفتح واتساب أو تطبيق البريد والرسالة جاهزة، ويُسجَّل الإرسال في ملف القضية."}</span></div></div>`,
     `<button class="btn primary" data-act="sendVia" data-ch="wa" style="background:#1F8F55;border-color:#1F8F55">${icon("wa")}واتساب</button>
      <button class="btn" data-act="sendVia" data-ch="mail">${icon("mail")}بريد إلكتروني</button>
      ${canShare ? `<button class="btn gold" data-act="sendVia" data-ch="share">${icon("send")}مشاركة ملف Word</button>` : ""}
-     ${ctx.docBody ? `<button class="btn ghost" data-act="sendVia" data-ch="file">${icon("download")}تنزيل Word</button>` : ""}
+     ${ctx.docBody ? `<button class="btn ghost" data-act="sendVia" data-ch="pdf">${icon("download")}PDF</button><button class="btn ghost" data-act="sendVia" data-ch="file">${icon("download")}Word</button>` : ""}
      <button class="btn ghost" data-act="closeModal">إغلاق</button>`, true);
 }
 const safeName = (t) => String(t || "مستند").replace(/[\\/:*?"<>|]/g, "-").slice(0, 90);
@@ -112,6 +112,9 @@ A.sendVia = async (el) => {
     const data = { files: [S.sendFile], title: ctx.docTitle, text: text.slice(0, 1000) };
     if (!navigator.canShare(data)) return toast("المتصفح لا يدعم مشاركة الملفات؛ استخدم «تنزيل Word».", true);
     try { await navigator.share(data); } catch (e) { if (e?.name === "AbortError") return; console.warn(e); return toast("تعذّرت المشاركة", true); }
+  } else if (ch === "pdf") {
+    try { await exportPdf(ctx.docTitle, ctx.docBody); } catch (e) { console.error(e); toast("تعذّر تجهيز PDF.", true); }
+    return;
   } else if (ch === "file") {
     try { const blob = S.sendFile || (await buildDocx(ctx.docTitle, ctx.docBody)); await S.caps.downloads.save({ filename: safeName(ctx.docTitle) + ".docx", data: blob }); toast("جاهز للتنزيل"); }
     catch (e) { if (e?.code !== "declined") toast("تعذّر إنشاء ملف Word.", true); }

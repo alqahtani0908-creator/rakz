@@ -33,14 +33,16 @@
   function shell(inner) {
     document.getElementById("auth-gate")?.remove();
     const el = document.createElement("div"); el.id = "auth-gate"; el.dir = "rtl";
-    el.style.cssText = "position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:16px;background:var(--bg);overflow:auto";
-    el.innerHTML = `<div style="width:min(420px,100%);background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:28px 24px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow)">
-      <div style="display:flex;justify-content:center"><img src="${typeof LOGO !== "undefined" ? LOGO.textLight : ""}" alt="ركز" style="height:52px"></div>${inner}</div>`;
+    el.className = "auth";
+    const L = typeof LOGO !== "undefined" ? LOGO : {};
+    el.innerHTML = `<aside class="auth-art"><img class="m" src="${L.iconDark || ""}" alt=""><img class="w" src="${L.textDark || ""}" alt="ركز النظامية للمحاماة والاستشارات القانونية"><span class="rule"></span>
+      <p class="tag">منصة إدارة القضايا والاستشارات</p><p class="sub">القضايا والمواعيد والصياغة والمالية في مكان واحد، بمساعد قانوني يستند إلى الأنظمة السعودية ولوائحها.</p></aside>
+      <div class="auth-side"><div class="auth-card"><div class="logo-sm"><img src="${L.textLight || ""}" alt="ركز" style="height:52px"></div>${inner}</div></div>`;
     document.body.appendChild(el); return el;
   }
   function showLogin(enter, mode = "in") {
     const up = mode === "up";
-    const el = shell(`<h2 style="margin:0;font-family:var(--f-doc);text-align:center">${up ? "إنشاء حساب في منصة ركز" : "الدخول إلى منصة ركز"}</h2>
+    const el = shell(`<h2>${up ? "إنشاء حساب في منصة ركز" : "الدخول إلى منصة ركز"}</h2>
       <div class="chips" style="justify-content:center"><span class="chip ${up ? "" : "on"}" data-m="in">دخول</span><span class="chip ${up ? "on" : ""}" data-m="up">إنشاء حساب</span></div>
       <form id="lg" style="display:flex;flex-direction:column;gap:12px">
         <div class="field"><label for="lg-e">البريد الإلكتروني</label><input id="lg-e" class="inp" type="email" required autocomplete="email" dir="ltr"></div>
@@ -68,14 +70,14 @@
     });
   }
   function showNotMember(resolve) {
-    const el = shell(`<h2 style="margin:0;font-family:var(--f-doc);text-align:center">حسابك بانتظار الإضافة</h2>
+    const el = shell(`<h2>حسابك بانتظار الإضافة</h2>
       <p style="margin:0">بريدك <b dir="ltr">${(session?.user?.email || "").replace(/[<>&"]/g, "")}</b> غير مضاف إلى «فريق العمل». اطلب من مدير المنصة إضافته في ملفك داخل المنصة، ثم اضغط «تحقق مرة أخرى».</p>
       <div class="row" style="justify-content:center"><button class="btn primary" id="nm-retry">تحقق مرة أخرى</button><button class="btn ghost" id="nm-out">تسجيل الخروج</button></div>`);
     el.querySelector("#nm-out").addEventListener("click", () => sb.auth.signOut());
     el.querySelector("#nm-retry").addEventListener("click", async () => { if (await isMember()) { el.remove(); resolve(session); } });
   }
   function showSetup() {
-    shell(`<h2 style="margin:0;font-family:var(--f-doc);text-align:center">المنصة بحاجة إلى ربط قاعدة البيانات</h2>
+    shell(`<h2>المنصة بحاجة إلى ربط قاعدة البيانات</h2>
       <p style="margin:0">عدّل الملف <code>docs/config.js</code> في المستودع وضع فيه رابط مشروع Supabase والمفتاح العام (anon key)، ثم حدّث الصفحة. الخطوات كاملة في ملف README.</p>`);
   }
   if (!configured) document.addEventListener("DOMContentLoaded", showSetup);

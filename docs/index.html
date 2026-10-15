@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#152335">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Noto+Naskh+Arabic:wght@400;600;700&display=swap">
 <style>html,body{margin:0}[hidden]{display:none!important}img{max-width:100%}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
 <script>document.write('<script src="config.js?t=' + Date.now() + '"><\/script>');</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -55,14 +55,16 @@
   function shell(inner) {
     document.getElementById("auth-gate")?.remove();
     const el = document.createElement("div"); el.id = "auth-gate"; el.dir = "rtl";
-    el.style.cssText = "position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:16px;background:var(--bg);overflow:auto";
-    el.innerHTML = `<div style="width:min(420px,100%);background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:28px 24px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow)">
-      <div style="display:flex;justify-content:center"><img src="${typeof LOGO !== "undefined" ? LOGO.textLight : ""}" alt="ركز" style="height:52px"></div>${inner}</div>`;
+    el.className = "auth";
+    const L = typeof LOGO !== "undefined" ? LOGO : {};
+    el.innerHTML = `<aside class="auth-art"><img class="m" src="${L.iconDark || ""}" alt=""><img class="w" src="${L.textDark || ""}" alt="ركز النظامية للمحاماة والاستشارات القانونية"><span class="rule"></span>
+      <p class="tag">منصة إدارة القضايا والاستشارات</p><p class="sub">القضايا والمواعيد والصياغة والمالية في مكان واحد، بمساعد قانوني يستند إلى الأنظمة السعودية ولوائحها.</p></aside>
+      <div class="auth-side"><div class="auth-card"><div class="logo-sm"><img src="${L.textLight || ""}" alt="ركز" style="height:52px"></div>${inner}</div></div>`;
     document.body.appendChild(el); return el;
   }
   function showLogin(enter, mode = "in") {
     const up = mode === "up";
-    const el = shell(`<h2 style="margin:0;font-family:var(--f-doc);text-align:center">${up ? "إنشاء حساب في منصة ركز" : "الدخول إلى منصة ركز"}</h2>
+    const el = shell(`<h2>${up ? "إنشاء حساب في منصة ركز" : "الدخول إلى منصة ركز"}</h2>
       <div class="chips" style="justify-content:center"><span class="chip ${up ? "" : "on"}" data-m="in">دخول</span><span class="chip ${up ? "on" : ""}" data-m="up">إنشاء حساب</span></div>
       <form id="lg" style="display:flex;flex-direction:column;gap:12px">
         <div class="field"><label for="lg-e">البريد الإلكتروني</label><input id="lg-e" class="inp" type="email" required autocomplete="email" dir="ltr"></div>
@@ -90,14 +92,14 @@
     });
   }
   function showNotMember(resolve) {
-    const el = shell(`<h2 style="margin:0;font-family:var(--f-doc);text-align:center">حسابك بانتظار الإضافة</h2>
+    const el = shell(`<h2>حسابك بانتظار الإضافة</h2>
       <p style="margin:0">بريدك <b dir="ltr">${(session?.user?.email || "").replace(/[<>&"]/g, "")}</b> غير مضاف إلى «فريق العمل». اطلب من مدير المنصة إضافته في ملفك داخل المنصة، ثم اضغط «تحقق مرة أخرى».</p>
       <div class="row" style="justify-content:center"><button class="btn primary" id="nm-retry">تحقق مرة أخرى</button><button class="btn ghost" id="nm-out">تسجيل الخروج</button></div>`);
     el.querySelector("#nm-out").addEventListener("click", () => sb.auth.signOut());
     el.querySelector("#nm-retry").addEventListener("click", async () => { if (await isMember()) { el.remove(); resolve(session); } });
   }
   function showSetup() {
-    shell(`<h2 style="margin:0;font-family:var(--f-doc);text-align:center">المنصة بحاجة إلى ربط قاعدة البيانات</h2>
+    shell(`<h2>المنصة بحاجة إلى ربط قاعدة البيانات</h2>
       <p style="margin:0">عدّل الملف <code>docs/config.js</code> في المستودع وضع فيه رابط مشروع Supabase والمفتاح العام (anon key)، ثم حدّث الصفحة. الخطوات كاملة في ملف README.</p>`);
   }
   if (!configured) document.addEventListener("DOMContentLoaded", showSetup);
@@ -634,6 +636,223 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 @media (max-width: 860px) { .paper { padding: 20px 18px; font-size: 14.5px; } }
 .tbl tr.law-child td { background: var(--surface-2); } .tbl tr.law-child .t { font-weight: 500; }
 
+/* =====================================================================
+   Design v2 — «ركز»: navy & bronze, Amiri display type, khatam (8-point star) lattice
+   ===================================================================== */
+:root {
+  --bg: #F5F1EC; --surface: #FFFFFF; --surface-2: #F2ECE5; --line: #E6DED5; --line-2: #D9CEC2;
+  --ink: #142236; --ink-2: #46546A; --muted: #7D8697;
+  --accent: #A3836B; --accent-2: #C8AC8E; --accent-ink: #7A5F4B; --accent-soft: #F4ECE3;
+  --nav: #13213A; --nav-2: #0C1626; --nav-ink: #EDE6DF; --nav-dim: #8995A8; --nav-hover: rgba(200,172,142,.10);
+  --f-ui: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
+  --f-display: "Amiri", "Noto Naskh Arabic", "Traditional Arabic", serif;
+  --r: 16px; --r-sm: 10px;
+  --shadow: 0 1px 1px rgba(20,34,54,.04), 0 2px 6px rgba(20,34,54,.04), 0 12px 32px -12px rgba(20,34,54,.12);
+  --shadow-lift: 0 2px 4px rgba(20,34,54,.06), 0 18px 40px -14px rgba(20,34,54,.22);
+  --gold-grad: linear-gradient(135deg, #C2A486 0%, #A3836B 52%, #8C6D56 100%);
+  --navy-grad: linear-gradient(160deg, #1B2D49 0%, #13213A 45%, #0B1524 100%);
+  --pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cg fill='none' stroke='%23C8AC8E' stroke-width='.8'%3E%3Crect x='14' y='14' width='28' height='28'/%3E%3Crect x='14' y='14' width='28' height='28' transform='rotate(45 28 28)'/%3E%3Ccircle cx='28' cy='28' r='6'/%3E%3Cpath d='M0 28h8.2M47.8 28H56M28 0v8.2M28 47.8V56'/%3E%3C/g%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0B131E; --surface: #111C2A; --surface-2: #172536; --line: #213247; --line-2: #2B3F57; --ink: #EEE8E2; --ink-2: #B9C1CD; --muted: #8590A1;
+    --accent: #C8AC8E; --accent-2: #DCC4A8; --accent-ink: #DCC4A8; --accent-soft: #241F1A; --nav: #0A1220; --nav-2: #060C16;
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 14px 34px -14px rgba(0,0,0,.55); --shadow-lift: 0 18px 44px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0B131E; --surface: #111C2A; --surface-2: #172536; --line: #213247; --line-2: #2B3F57; --ink: #EEE8E2; --ink-2: #B9C1CD; --muted: #8590A1;
+  --accent: #C8AC8E; --accent-2: #DCC4A8; --accent-ink: #DCC4A8; --accent-soft: #241F1A; --nav: #0A1220; --nav-2: #060C16;
+  --shadow: 0 1px 2px rgba(0,0,0,.35), 0 14px 34px -14px rgba(0,0,0,.55); --shadow-lift: 0 18px 44px -14px rgba(0,0,0,.7);
+}
+body { background: var(--bg); font-size: 14.5px; -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0; background: var(--pattern); background-size: 56px; opacity: .07; pointer-events: none; z-index: 0; mask-image: linear-gradient(180deg, #000, transparent 55%); -webkit-mask-image: linear-gradient(180deg, #000, transparent 55%); }
+#app { position: relative; z-index: 1; }
+@media (min-width: 861px) { #app { grid-template-columns: 268px minmax(0, 1fr); } }
+::selection { background: rgba(163,131,107,.28); }
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+
+/* ---- sidebar ---- */
+.side { background: var(--navy-grad); padding: 24px 16px 18px; isolation: isolate; box-shadow: inset 1px 0 0 rgba(200,172,142,.12); }
+.side::before { content: ""; position: absolute; inset: 0; background: var(--pattern); background-size: 64px; opacity: .09; z-index: -1; mask-image: linear-gradient(180deg, #000 0%, transparent 38%, transparent 70%, #000 100%); -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 38%, transparent 70%, #000 100%); }
+.brand { flex-direction: column; gap: 10px; padding: 4px 8px 20px; border-bottom: 0; margin-bottom: 6px; position: relative; }
+.brand::after { content: ""; position: absolute; bottom: 0; inset-inline: 18px; height: 1px; background: linear-gradient(90deg, transparent, rgba(200,172,142,.55), transparent); }
+.brand .mark { height: 58px; filter: drop-shadow(0 6px 14px rgba(0,0,0,.35)); }
+.brand .word { height: 40px; }
+.nav-sec { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: 0; color: var(--accent-2); opacity: .75; padding: 18px 12px 6px; }
+.nav-sec::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(200,172,142,.3), transparent); }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a { padding: 10px 12px; border-radius: 12px; opacity: .78; transition: background .18s, opacity .18s, transform .18s; position: relative; }
+.nav a svg { color: var(--nav-dim); transition: color .18s; }
+.nav a:hover { background: rgba(255,255,255,.05); opacity: 1; }
+.nav a:hover svg { color: var(--accent-2); }
+.nav a.on { background: linear-gradient(270deg, rgba(200,172,142,.20), rgba(200,172,142,.04)); opacity: 1; box-shadow: inset -3px 0 0 var(--accent-2); font-weight: 600; }
+.nav a.on svg { color: var(--accent-2); }
+.nav .badge { background: var(--gold-grad); font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.side .me { border-top: 0; position: relative; padding: 14px 8px 2px; }
+.side .me::before { content: ""; position: absolute; top: 0; inset-inline: 10px; height: 1px; background: linear-gradient(90deg, transparent, rgba(200,172,142,.4), transparent); }
+.side .avatar { background: var(--gold-grad); color: #fff; width: 34px; height: 34px; }
+
+/* ---- top bar ---- */
+.topbar { background: color-mix(in srgb, var(--surface) 78%, transparent); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); padding: 14px 32px; }
+.topbar .search input { background: var(--surface-2); border-color: transparent; border-radius: 12px; padding-block: 9px; transition: background .18s, box-shadow .18s; }
+.topbar .search input:focus { outline: none; background: var(--surface); box-shadow: 0 0 0 1px var(--accent), 0 0 0 5px var(--accent-soft); }
+.icon-btn { border-radius: 12px; transition: border-color .18s, background .18s; }
+.icon-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+.view { padding: 30px 32px 64px; gap: 24px; }
+.view.enter > * { animation: rise .42s cubic-bezier(.2,.7,.2,1) both; }
+.view.enter > *:nth-child(2) { animation-delay: .04s; } .view.enter > *:nth-child(3) { animation-delay: .08s; } .view.enter > *:nth-child(n+4) { animation-delay: .12s; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .view.enter > * { animation: none; } }
+
+/* ---- headings ---- */
+.page-head { align-items: flex-end; }
+.page-head h1, .case-head h1 { font-family: var(--f-display); font-weight: 700; letter-spacing: 0; }
+.page-head h1 { font-size: 36px; line-height: 1.25; color: var(--ink); }
+.page-head h1::after { content: ""; display: block; width: 64px; height: 3px; margin-top: 8px; border-radius: 3px; background: linear-gradient(270deg, var(--accent), transparent); }
+.page-head p { font-size: 13.5px; margin-top: 6px; }
+.case-head h1 { font-size: 30px; }
+.modal-h h2 { font-family: var(--f-display); font-size: 22px; }
+.crumbs { font-size: 12.5px; }
+.crumbs a:hover { color: var(--accent-ink); }
+
+/* ---- buttons & fields ---- */
+.btn { border-radius: 11px; padding: 9px 16px; transition: transform .15s, box-shadow .18s, border-color .18s, background .18s, filter .18s; }
+.btn:hover { border-color: var(--accent-2); box-shadow: 0 4px 14px -6px rgba(20,34,54,.25); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--navy-grad); border-color: transparent; color: #F5EFE8; box-shadow: 0 6px 16px -8px rgba(19,33,58,.7); }
+.btn.primary:hover { opacity: 1; filter: brightness(1.12); }
+.btn.gold { background: var(--gold-grad); border-color: transparent; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,.12); box-shadow: 0 6px 16px -8px rgba(140,109,86,.85); }
+.btn.gold:hover { filter: brightness(1.06); }
+.btn.ghost:hover { box-shadow: none; background: var(--surface-2); }
+.btn.sm { border-radius: 9px; padding: 5px 11px; }
+.inp, select.inp, textarea.inp { border-radius: 11px; border-color: var(--line); padding: 9px 12px; transition: border-color .18s, box-shadow .18s; background: var(--surface); }
+.inp:hover { border-color: var(--line-2); }
+.inp:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.field label { color: var(--ink-2); font-weight: 600; font-size: 12.5px; }
+.chip { border-radius: 99px; transition: all .15s; }
+.chip.on { background: var(--navy-grad); border-color: transparent; color: #F5EFE8; }
+
+/* ---- surfaces ---- */
+.card, .case-head, .tbl-wrap, .file, .kpi, .onb .step, .banner { border-radius: var(--r); border-color: var(--line); box-shadow: var(--shadow); }
+.card { padding: 20px 22px; }
+.card-h { margin-bottom: 14px; }
+.card > h3, .card-h h3 { font-size: 15.5px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.card-h h3::before, .card > h3::before { content: ""; width: 7px; height: 7px; transform: rotate(45deg); background: var(--gold-grad); border-radius: 1.5px; flex: none; }
+.card-h .sub { font-size: 12px; }
+
+.kpi { position: relative; overflow: hidden; padding: 18px 20px; gap: 6px; transition: transform .2s, box-shadow .2s, border-color .2s; isolation: isolate; }
+.kpi::before { content: ""; position: absolute; inset-inline: 0; top: 0; height: 3px; background: var(--gold-grad); opacity: .0; transition: opacity .2s; }
+.kpi::after { content: ""; position: absolute; inset-inline-start: -30px; bottom: -30px; width: 120px; height: 120px; background: var(--pattern); background-size: 40px; opacity: .10; z-index: -1; border-radius: 50%; }
+.kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); border-color: var(--accent-2); }
+.kpi:hover::before { opacity: 1; }
+.kpi .lbl { font-size: 12.5px; font-weight: 500; color: var(--ink-2); }
+.kpi .val { font-size: 34px; font-weight: 600; letter-spacing: -.5px; }
+.kpi .foot { color: var(--muted); }
+
+/* tables */
+.tbl-wrap { overflow: auto; }
+.tbl th { background: var(--surface-2); color: var(--ink-2); font-weight: 600; font-size: 12px; padding: 11px 14px; border-bottom-color: var(--line); }
+.tbl td { padding: 13px 14px; }
+.tbl tbody tr { transition: background .15s; }
+.tbl tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 70%, transparent); }
+.tbl .t { font-weight: 600; }
+.tabs { gap: 2px; border-bottom: 1px solid var(--line); }
+.tabs a { padding: 11px 16px; border-bottom-width: 2.5px; transition: color .15s, border-color .15s; font-weight: 500; }
+.tabs a:hover { color: var(--accent-ink); }
+.tabs a.on { color: var(--ink); border-color: var(--accent); font-weight: 700; }
+.tabs a .n { background: var(--surface-2); border-radius: 99px; padding: 0 7px; font-size: 11px; }
+.tabs a.on .n { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* lists, dates, pills */
+.li { padding: 12px 0; }
+.li.clickable { border-radius: 10px; transition: background .15s, padding .15s; }
+.li.clickable:hover { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); padding-inline: 10px; }
+.datebox { width: 56px; border-radius: 12px; background: var(--surface); border-color: var(--line); box-shadow: 0 1px 0 var(--line); padding: 5px 0; }
+.datebox b { font-family: var(--f-display); font-size: 22px; line-height: 1.05; color: var(--ink); }
+.datebox.today { background: var(--gold-grad); border-color: transparent; } .datebox.today b, .datebox.today span { color: #fff; }
+.pill { padding: 2px 10px; font-weight: 600; font-size: 11.5px; }
+.empty svg { width: 46px; height: 46px; padding: 14px; border-radius: 50%; background: var(--accent-soft); box-sizing: content-box; color: var(--accent-ink); opacity: 1; }
+.empty { padding: 38px 16px; }
+.bar-row .track { height: 9px; } .bar-row .fill { background: var(--navy-grad); } .bar-row .fill.gold { background: var(--gold-grad); }
+.stackbar { height: 14px; gap: 2px; background: transparent; } .stackbar span { border-radius: 3px; }
+.tl-item::before { box-shadow: 0 0 0 4px var(--surface); }
+.drop { border-radius: var(--r); border: 1.5px dashed var(--accent-2); background: color-mix(in srgb, var(--accent-soft) 70%, transparent); transition: background .18s, border-color .18s; padding: 28px; }
+.drop:hover, .drop.over { background: var(--accent-soft); border-color: var(--accent); }
+.drop svg { width: 28px; height: 28px; }
+.ai-box { background: var(--surface-2); }
+.modal-bg { background: rgba(8,14,24,.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.modal { border-radius: 20px; box-shadow: 0 30px 80px -20px rgba(0,0,0,.45); border: 1px solid var(--line); }
+.modal-h { position: relative; }
+.modal-h::after { content: ""; position: absolute; bottom: -1px; inset-inline-start: 20px; width: 48px; height: 2px; background: var(--gold-grad); }
+.toast { border-radius: 12px; background: var(--navy-grad); box-shadow: var(--shadow-lift); padding: 11px 18px; border: 1px solid rgba(200,172,142,.25); color: #F5EFE8; }
+.bulkbar { background: var(--navy-grad); border-radius: 16px; }
+.banner.gold { background: linear-gradient(135deg, var(--accent-soft), var(--surface)); }
+.paper { border-radius: 6px; box-shadow: 0 2px 6px rgba(20,34,54,.06), 0 24px 60px -24px rgba(20,34,54,.3); }
+
+/* ---- dashboard hero ---- */
+.hero { position: relative; border-radius: 22px; background: var(--navy-grad); color: #F3ECE4; overflow: hidden; isolation: isolate; box-shadow: 0 24px 60px -30px rgba(11,21,36,.8); padding: 30px 32px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 28px; align-items: center; }
+.hero::before { content: ""; position: absolute; inset: 0; background: var(--pattern); background-size: 60px; opacity: .22; z-index: -1; mask-image: linear-gradient(270deg, #000 0%, rgba(0,0,0,.5) 45%, transparent 80%); -webkit-mask-image: linear-gradient(270deg, #000 0%, rgba(0,0,0,.5) 45%, transparent 80%); }
+.hero::after { content: ""; position: absolute; width: 460px; height: 460px; inset-inline-start: -120px; top: -200px; background: radial-gradient(circle, rgba(200,172,142,.28), transparent 65%); z-index: -1; }
+.hero .eyebrow { font-size: 12.5px; color: var(--accent-2); display: inline-flex; gap: 8px; align-items: center; }
+.hero .eyebrow::before { content: ""; width: 18px; height: 1px; background: var(--accent-2); }
+.hero h1 { font-family: var(--f-display); font-size: 40px; line-height: 1.2; margin: 8px 0 6px; color: #fff; font-weight: 700; }
+.hero p { margin: 0 0 18px; color: rgba(243,236,228,.75); font-size: 14px; max-width: 46ch; }
+.hero .btn { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.14); color: #F3ECE4; backdrop-filter: blur(6px); }
+.hero .btn:hover { background: rgba(255,255,255,.14); border-color: var(--accent-2); }
+.hero .btn.gold { background: var(--gold-grad); border-color: transparent; }
+.hero .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.hero .kpi { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.10); box-shadow: none; color: #F3ECE4; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.hero .kpi::after { display: none; }
+.hero .kpi:hover { background: rgba(255,255,255,.10); border-color: rgba(200,172,142,.5); box-shadow: none; }
+.hero .kpi .lbl { color: rgba(243,236,228,.72); }
+.hero .kpi .foot { color: rgba(243,236,228,.55); }
+.hero .kpi .val { color: #fff; font-family: var(--f-display); font-size: 40px; font-weight: 700; }
+.hero .kpi.alert .val { color: #F2A196; } .hero .kpi.attn .val { color: var(--accent-2); }
+
+/* ---- sign-in ---- */
+.auth { position: fixed; inset: 0; z-index: 200; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); background: var(--bg); overflow: auto; }
+.auth-art { position: relative; background: var(--navy-grad); color: #F3ECE4; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 18px; padding: 40px; overflow: hidden; isolation: isolate; text-align: center; }
+.auth-art::before { content: ""; position: absolute; inset: 0; background: var(--pattern); background-size: 72px; opacity: .16; z-index: -1; mask-image: radial-gradient(circle at 50% 45%, #000, transparent 75%); -webkit-mask-image: radial-gradient(circle at 50% 45%, #000, transparent 75%); }
+.auth-art::after { content: ""; position: absolute; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(circle, rgba(200,172,142,.25), transparent 62%); z-index: -1; }
+.auth-art img.m { height: 120px; filter: drop-shadow(0 14px 30px rgba(0,0,0,.45)); }
+.auth-art img.w { height: 62px; }
+.auth-art .tag { font-family: var(--f-display); font-size: 26px; color: #fff; margin: 6px 0 0; }
+.auth-art .sub { color: rgba(243,236,228,.65); font-size: 13.5px; max-width: 34ch; margin: 0; }
+.auth-art .rule { width: 90px; height: 2px; background: var(--gold-grad); border-radius: 2px; }
+.auth-side { display: grid; place-items: center; padding: 32px 20px; }
+.auth-card { width: min(400px, 100%); display: flex; flex-direction: column; gap: 16px; }
+.auth-card h2 { font-family: var(--f-display); font-size: 30px; margin: 0; text-align: start; }
+.auth-card .chips { justify-content: flex-start !important; background: var(--surface-2); padding: 4px; border-radius: 99px; width: fit-content; gap: 2px; }
+.auth-card .chip { border: 0; background: transparent; padding: 6px 18px; }
+.auth-card .chip.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgba(20,34,54,.15); }
+.auth-card .btn.primary { padding-block: 12px; }
+.auth-card .logo-sm { display: none; }
+
+@media (max-width: 1100px) { .hero { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 860px) {
+  .topbar { padding: 10px 16px; }
+  .view { padding: 20px 16px 50px; }
+  .page-head h1 { font-size: 29px; }
+  .hero { padding: 22px 18px; border-radius: 18px; gap: 18px; }
+  .hero h1 { font-size: 31px; }
+  .hero .kpi .val { font-size: 32px; }
+  .bnav { background: color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter: saturate(1.4) blur(16px); -webkit-backdrop-filter: saturate(1.4) blur(16px); }
+  .bnav a.on { color: var(--ink); }
+  .bnav a.on::before { content: ""; position: absolute; top: -6px; width: 26px; height: 3px; border-radius: 0 0 3px 3px; background: var(--gold-grad); }
+  .auth { grid-template-columns: minmax(0, 1fr); }
+  .auth-art { display: none; }
+  .auth-card .logo-sm { display: flex; justify-content: center; margin-bottom: 6px; }
+  .auth-card h2 { text-align: center; } .auth-card .chips { margin-inline: auto; }
+  .card { padding: 16px 15px; }
+  .case-head { padding: 16px; } .case-head h1 { font-size: 23px; }
+  .tabs a { padding: 9px 12px; }
+  .modal, .modal.wide { border-radius: 20px 20px 0 0; }
+  .hero .kpis { gap: 10px; } .hero .kpi { padding: 14px; }
+}
+@media (max-width: 520px) { .kpi .val { font-size: 26px; } .hero .kpi .val { font-size: 30px; } .page-head h1 { font-size: 26px; } }
+@media (max-width: 700px) { .tbl.resp tr { border-radius: 14px; box-shadow: var(--shadow); } }
+
 </style>
 <div id="app" dir="rtl" lang="ar">
   <aside class="side"></aside>
@@ -835,6 +1054,7 @@ function go(name, id = null, tab = null) {
   try { location.hash = name === "dashboard" ? "" : name; } catch {}
   $(".side")?.classList.remove("open");
   render(); window.scrollTo(0, 0);
+  const v = $("#view"); if (v) { v.classList.remove("enter"); void v.offsetWidth; v.classList.add("enter"); }
 }
 let pendingRender = false;
 function isEditing() { const a = document.activeElement; return a && $("#view")?.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox"; }
@@ -1023,17 +1243,21 @@ VIEWS.dashboard = () => {
     { done: S.data.cases.length > 0, t: "افتح أول قضية", d: "ثم ارفع مرفقاتها ليقرأها المساعد", act: "newCase" },
   ];
   return `
-  <div class="page-head"><div><h1>${greet}${me ? "، " + esc(me.name.split(" ")[0]) : ""}</h1>
-    <p>${fmtDate(todayStr(), true)} · <span class="num">${esc(fmtHijri(todayStr()))}</span></p></div>
-    <div class="row"><button class="btn" data-act="newTask">${icon("plus")}مهمة أو موعد</button><button class="btn" data-act="go" data-r="drafting">${icon("docs")}صياغة مستند</button></div></div>
-  ${steps.some((s) => !s.done) ? `<div class="card"><div class="card-h"><h3>تهيئة المنصة</h3><span class="sub">${steps.filter((s) => s.done).length} من 4</span></div>
-    <div class="onb">${steps.map((s, i) => `<div class="step ${s.done ? "done" : ""}" data-act="${s.act || "go"}" data-r="${s.r || ""}"><span class="n">${s.done ? "✓" : i + 1}</span><b>${s.t}</b><span class="muted small">${s.d}</span></div>`).join("")}</div></div>` : ""}
-  <div class="kpis">
+  <section class="hero"><div>
+      <span class="eyebrow">${fmtDate(todayStr(), true)} · <span class="num">${esc(fmtHijri(todayStr()))}</span></span>
+      <h1>${greet}${me ? "، " + esc(me.name.split(" ")[0]) : ""}</h1>
+      <p>${act.length ? `بين يديك ${act.length} ${act.length > 10 || act.length < 3 ? "قضية" : "قضايا"} منظورة${week.length ? `، و${week.length} ${week.length === 1 ? "جلسة" : "جلسات"} خلال الأسبوع` : ""}${late.length ? `، و${late.length} ${late.length === 1 ? "مهمة متأخرة تحتاج" : "مهام متأخرة تحتاج"} انتباهك` : ""}.` : "مرحبًا بك في منصة ركز لإدارة القضايا والاستشارات."}</p>
+      <div class="row"><button class="btn gold" data-act="newTask">${icon("plus")}مهمة أو موعد</button><button class="btn" data-act="go" data-r="drafting">${icon("docs")}صياغة مستند</button></div></div>
+    <div class="kpis">
     <button class="kpi" data-act="go" data-r="cases"><span class="lbl">القضايا المنظورة</span><span class="val">${act.length}</span><span class="foot">${S.data.cases.filter((c) => c.status === "intake").length} قيد الدراسة</span></button>
     <button class="kpi attn" data-act="go" data-r="tasks"><span class="lbl">جلسات خلال 7 أيام</span><span class="val">${week.length}</span><span class="foot">${week[0] ? "أقربها " + fmtDate(week[0].due) : "لا جلسات قريبة"}</span></button>
     <button class="kpi ${late.length ? "alert" : ""}" data-act="go" data-r="tasks"><span class="lbl">مهام متأخرة</span><span class="val">${late.length}</span><span class="foot">${lateMine.length} منها لك</span></button>
     <button class="kpi ${pend.length ? "attn" : ""}" data-act="go" data-r="assign"><span class="lbl">إسنادات بانتظار القبول</span><span class="val">${pend.length || pendAll.length}</span><span class="foot">${pend.length ? "بانتظار ردّك" : `${pendAll.length} في المكتب`}</span></button>
   </div>
+  </section>
+  ${steps.some((s) => !s.done) ? `<div class="card"><div class="card-h"><h3>تهيئة المنصة</h3><span class="sub">${steps.filter((s) => s.done).length} من 4</span></div>
+    <div class="onb">${steps.map((s, i) => `<div class="step ${s.done ? "done" : ""}" data-act="${s.act || "go"}" data-r="${s.r || ""}"><span class="n">${s.done ? "✓" : i + 1}</span><b>${s.t}</b><span class="muted small">${s.d}</span></div>`).join("")}</div></div>` : ""}
+
   <div class="cols">
     <div class="stack">
       <div class="card"><div class="card-h"><h3>الجلسات والمواعيد القادمة</h3><span class="sub">14 يومًا</span></div>
@@ -2030,6 +2254,54 @@ async function buildDocx(title, body) {
   return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
 }
 
+/* ---------- PDF: the browser's own print engine renders Arabic perfectly, so a document is laid out
+   on A4 in a hidden frame and handed to «Print → Save as PDF» (on iPhone: Share → Save to Files). ---------- */
+const PRINT_CSS = `@page { size: A4; margin: 16mm 18mm 18mm; @bottom-center { content: counter(page) " / " counter(pages); font: 9pt "IBM Plex Sans Arabic", sans-serif; color: #8a8f99; } }
+* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+html, body { margin: 0; background: #fff; }
+body { font-family: "Noto Naskh Arabic", "Traditional Arabic", serif; font-size: 13pt; line-height: 1.95; color: #1b2433; direction: rtl; }
+.lh { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #A3836B; padding-bottom: 8px; margin-bottom: 20px; }
+.lh img.w { height: 44px; } .lh img.m { height: 56px; }
+h1 { text-align: center; font-size: 18pt; color: #152335; border-bottom: 1.5px solid #A3836B; padding-bottom: 6px; margin: 6px auto 18px; width: fit-content; max-width: 100%; }
+h2 { font-size: 14pt; color: #152335; margin: 16px 0 4px; break-after: avoid; }
+h3 { font-size: 13pt; color: #7A5F4B; margin: 12px 0 4px; break-after: avoid; }
+p { margin: 0 0 7px; text-align: justify; orphans: 3; widows: 3; } p.c { text-align: center; font-weight: 700; color: #152335; }
+ul, ol { padding-inline-start: 24px; margin: 0 0 8px; } li { margin-bottom: 3px; } li::marker { color: #A3836B; font-weight: 700; }
+table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 12pt; table-layout: fixed; break-inside: auto; } tr { break-inside: avoid; }
+td, th { border: 1px solid #cfc6bd; padding: 3px 9px; text-align: start; } th { background: #F1EBE5; }
+table.plain td { border: 0; text-align: center; padding: 2px 8px; } table.plain tr:first-child td { font-weight: 700; color: #152335; }
+table.plain { break-inside: avoid; margin-top: 18px; }
+hr { border: 0; border-top: 1px solid #d8cfc6; margin: 12px 0; }
+mark { background: none; color: inherit; }
+.ft { border-top: 1px solid #e5ddd5; margin-top: 26px; padding-top: 6px; font: 8.5pt "IBM Plex Sans Arabic", sans-serif; color: #6b7280; text-align: center; }`;
+function printHtml(title, body) {
+  const f = S.firm;
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&family=Noto+Naskh+Arabic:wght@400;600;700&display=block">
+<style>${PRINT_CSS}</style></head><body><div class="lh"><img class="w" src="${LOGO.textLight}" alt=""><img class="m" src="${LOGO.iconLight}" alt=""></div>
+${blocksHtml(parseBlocks(body))}<div class="ft">${esc([f.nameAr, f.cr ? "س.ت " + f.cr : "", f.address || f.city, f.phone, f.email, f.website].filter(Boolean).join("  |  "))}</div></body></html>`;
+}
+async function exportPdf(title, body) {
+  document.getElementById("pdf-frame")?.remove();
+  const fr = document.createElement("iframe");
+  fr.id = "pdf-frame"; fr.title = "PDF"; fr.setAttribute("aria-hidden", "true");
+  fr.style.cssText = "position:fixed;width:0;height:0;border:0;inset-inline-start:-9999px;bottom:0";
+  document.body.appendChild(fr);
+  const doc = fr.contentDocument; doc.open(); doc.write(printHtml(title, body)); doc.close();
+  // Wait for the fonts and letterhead images, otherwise the first print falls back to system fonts.
+  await new Promise((r) => (doc.readyState === "complete" ? r() : fr.contentWindow.addEventListener("load", r, { once: true })));
+  try { await Promise.race([doc.fonts.ready, new Promise((r) => setTimeout(r, 3500))]); } catch {}
+  const prev = document.title; document.title = title; // Safari names the PDF after the top page
+  fr.contentWindow.focus(); fr.contentWindow.print();
+  setTimeout(() => { document.title = prev; }, 1500);
+}
+A.exportPdf = async (el) => {
+  const d = byId(S.data.docs, el.dataset.id);
+  const title = ($("#doc-title")?.value || d?.title || "مستند").trim(); const body = $("#doc-body")?.value ?? d?.body ?? "";
+  el.disabled = true; toast("يُجهَّز الملف… اختر «حفظ بصيغة PDF» من نافذة الطباعة");
+  try { await exportPdf(title, body); } catch (e) { console.error(e); toast("تعذّر تجهيز PDF.", true); } finally { el.disabled = false; }
+};
+
 /* ============ Rakz — drafting: contracts, fee proposals, pleadings, Word export ============ */
 
 const PLACEHOLDERS = [
@@ -2521,7 +2793,8 @@ VIEWS.doc = () => {
   <div class="page-head"><div class="grow"><input id="doc-title" class="inp" style="font-family:var(--f-doc);font-size:21px;font-weight:700;border-color:transparent;padding-inline:0;background:transparent" value="${esc(d.title)}" data-draft="doct.${d.id}" aria-label="عنوان المستند"></div>
     <div class="row">${generating ? `<span class="thinking">يكتب المساعد…</span><button class="btn" data-act="stopGen">إيقاف</button>` : `
       <button class="btn primary" data-act="saveDoc" data-id="${d.id}">${icon("check")}حفظ</button>
-      <button class="btn gold" data-act="exportDocx" data-id="${d.id}">${icon("download")}تنزيل Word</button>
+      <button class="btn" data-act="exportDocx" data-id="${d.id}">${icon("download")}Word</button>
+      <button class="btn gold" data-act="exportPdf" data-id="${d.id}">${icon("download")}PDF</button>
       <button class="btn" data-act="sendDoc" data-id="${d.id}">${icon("send")}إرسال للعميل</button>
       <button class="btn" data-act="copyDoc">${icon("copy")}نسخ النص</button>
       <button class="btn" data-act="aiEdit" data-id="${d.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}تعديل بالمساعد</button>
@@ -3294,11 +3567,11 @@ function sendModal(ctx) {
       <div class="field"><label for="snd-email">البريد الإلكتروني</label><input id="snd-email" class="inp" type="email" dir="ltr" value="${esc(ctx.email || "")}" placeholder="client@example.com"></div></div>
     <div class="field"><label for="snd-subj">الموضوع (للبريد)</label><input id="snd-subj" class="inp" value="${esc(ctx.subject || "")}"></div>
     <div class="field"><label for="snd-text">نص الرسالة</label><textarea id="snd-text" class="inp" rows="11">${esc(ctx.text || "")}</textarea>
-      <span class="hint">${ctx.docBody ? `لإرسال المستند نفسه: ${canShare ? "«مشاركة ملف Word» تفتح قائمة المشاركة في الجوال (واتساب، البريد…) والملف مرفق، أو " : ""}نزّل ملف Word وأرفقه في المحادثة أو البريد.` : "يُفتح واتساب أو تطبيق البريد والرسالة جاهزة، ويُسجَّل الإرسال في ملف القضية."}</span></div></div>`,
+      <span class="hint">${ctx.docBody ? `لإرسال المستند نفسه: ${canShare ? "«مشاركة ملف Word» تفتح قائمة المشاركة في الجوال (واتساب، البريد…) والملف مرفق، أو " : ""}نزّل الملف بصيغة PDF أو Word وأرفقه في المحادثة أو البريد.` : "يُفتح واتساب أو تطبيق البريد والرسالة جاهزة، ويُسجَّل الإرسال في ملف القضية."}</span></div></div>`,
     `<button class="btn primary" data-act="sendVia" data-ch="wa" style="background:#1F8F55;border-color:#1F8F55">${icon("wa")}واتساب</button>
      <button class="btn" data-act="sendVia" data-ch="mail">${icon("mail")}بريد إلكتروني</button>
      ${canShare ? `<button class="btn gold" data-act="sendVia" data-ch="share">${icon("send")}مشاركة ملف Word</button>` : ""}
-     ${ctx.docBody ? `<button class="btn ghost" data-act="sendVia" data-ch="file">${icon("download")}تنزيل Word</button>` : ""}
+     ${ctx.docBody ? `<button class="btn ghost" data-act="sendVia" data-ch="pdf">${icon("download")}PDF</button><button class="btn ghost" data-act="sendVia" data-ch="file">${icon("download")}Word</button>` : ""}
      <button class="btn ghost" data-act="closeModal">إغلاق</button>`, true);
 }
 const safeName = (t) => String(t || "مستند").replace(/[\\/:*?"<>|]/g, "-").slice(0, 90);
@@ -3319,6 +3592,9 @@ A.sendVia = async (el) => {
     const data = { files: [S.sendFile], title: ctx.docTitle, text: text.slice(0, 1000) };
     if (!navigator.canShare(data)) return toast("المتصفح لا يدعم مشاركة الملفات؛ استخدم «تنزيل Word».", true);
     try { await navigator.share(data); } catch (e) { if (e?.name === "AbortError") return; console.warn(e); return toast("تعذّرت المشاركة", true); }
+  } else if (ch === "pdf") {
+    try { await exportPdf(ctx.docTitle, ctx.docBody); } catch (e) { console.error(e); toast("تعذّر تجهيز PDF.", true); }
+    return;
   } else if (ch === "file") {
     try { const blob = S.sendFile || (await buildDocx(ctx.docTitle, ctx.docBody)); await S.caps.downloads.save({ filename: safeName(ctx.docTitle) + ".docx", data: blob }); toast("جاهز للتنزيل"); }
     catch (e) { if (e?.code !== "declined") toast("تعذّر إنشاء ملف Word.", true); }

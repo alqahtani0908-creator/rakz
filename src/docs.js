@@ -489,7 +489,8 @@ VIEWS.doc = () => {
   <div class="page-head"><div class="grow"><input id="doc-title" class="inp" style="font-family:var(--f-doc);font-size:21px;font-weight:700;border-color:transparent;padding-inline:0;background:transparent" value="${esc(d.title)}" data-draft="doct.${d.id}" aria-label="عنوان المستند"></div>
     <div class="row">${generating ? `<span class="thinking">يكتب المساعد…</span><button class="btn" data-act="stopGen">إيقاف</button>` : `
       <button class="btn primary" data-act="saveDoc" data-id="${d.id}">${icon("check")}حفظ</button>
-      <button class="btn gold" data-act="exportDocx" data-id="${d.id}">${icon("download")}تنزيل Word</button>
+      <button class="btn" data-act="exportDocx" data-id="${d.id}">${icon("download")}Word</button>
+      <button class="btn gold" data-act="exportPdf" data-id="${d.id}">${icon("download")}PDF</button>
       <button class="btn" data-act="sendDoc" data-id="${d.id}">${icon("send")}إرسال للعميل</button>
       <button class="btn" data-act="copyDoc">${icon("copy")}نسخ النص</button>
       <button class="btn" data-act="aiEdit" data-id="${d.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}تعديل بالمساعد</button>

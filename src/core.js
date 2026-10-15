@@ -190,6 +190,7 @@ function go(name, id = null, tab = null) {
   try { location.hash = name === "dashboard" ? "" : name; } catch {}
   $(".side")?.classList.remove("open");
   render(); window.scrollTo(0, 0);
+  const v = $("#view"); if (v) { v.classList.remove("enter"); void v.offsetWidth; v.classList.add("enter"); }
 }
 let pendingRender = false;
 function isEditing() { const a = document.activeElement; return a && $("#view")?.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox"; }
