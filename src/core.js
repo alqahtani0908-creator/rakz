@@ -225,6 +225,7 @@ function renderSide() {
       ${n("cases", "القضايا", "cases")}
       ${n("tasks", "المهام والتذكيرات", "tasks", late || "")}
       ${n("assign", "طلبات الإسناد", "inbox", pend || "")}
+      ${n("najiz", "ناجز", "link")}
       ${n("consults", "الاستشارات", "chat", S.data.consults.filter((x) => x.status !== "done" && (!myLid() || x.lawyerId === myLid())).length || "")}
       <div class="nav-sec">الصياغة</div>
       ${n("drafting", "العقود واللوائح والعروض", "docs")}
