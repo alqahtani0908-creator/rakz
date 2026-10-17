@@ -12,6 +12,12 @@ const ORD = "أولًا|أولاً|ثانيًا|ثانياً|ثالثًا|ثال
 const RE_AUTO_H = new RegExp(`^((${ORD})\\s*[:：\\-–]|البند\\s+[^\\s:]+(\\s+[^\\s:]+)?\\s*[:：]|المادة\\s+[^\\s:]+\\s*[:：])`);
 const RE_NUM = /^(\d{1,2}|[١-٩][٠-٩]?)\s*[.)\-–]\s+/;
 const BLANK = "[........]";
+/* Direction: English contracts are laid out left-to-right, bilingual ones keep Arabic first. Each paragraph or cell
+   also follows its own script, so an English clause inside an Arabic document reads correctly. */
+const scriptCounts = (t) => { const s = String(t || "").replace(/\[[^\]]*\]|\*\*/g, ""); return { ar: (s.match(/[\u0600-\u06FF]/g) || []).length, la: (s.match(/[A-Za-z]/g) || []).length }; };
+const isLatin = (t) => { const c = scriptCounts(t); return c.la > c.ar; };
+const docDir = (body) => { const c = scriptCounts(body); return c.la > c.ar * 1.5 ? "ltr" : "rtl"; };
+let DOC_DIR = "rtl"; // set while building a .docx
 
 function parseBlocks(text) {
   const lines = String(text || "").replace(/\r/g, "").split("\n"); const out = []; let cur = null;
@@ -33,6 +39,7 @@ function parseBlocks(text) {
     else if (/^بسم الله الرحمن الرحيم$/.test(l)) out.push({ t: "center", text: l });
     else if (/^\*\*[^*]+\*\*:?$/.test(l)) out.push({ t: "h2", text: l.replace(/\*\*/g, "").replace(/:$/, "") });
     else if (RE_AUTO_H.test(l) && l.length < 70) out.push({ t: "h2", text: l });
+    else if (/^(Article|Clause|Section|Schedule|Annex|Part)\s+[\w.]+\s*[:.\-–]/i.test(l) && l.length < 80) out.push({ t: "h2", text: l });
     else out.push({ t: "p", text: l });
   }
   close(); return out;
@@ -55,21 +62,21 @@ function colWidths(rows, total) {
 }
 function blocksHtml(blocks) {
   return blocks.map((b) => {
-    if (b.t === "h1") return `<h1>${inlineHtml(b.text, false)}</h1>`;
-    if (b.t === "h2") return `<h2>${inlineHtml(b.text, false)}</h2>`;
-    if (b.t === "h3") return `<h3>${inlineHtml(b.text, false)}</h3>`;
-    if (b.t === "center") return `<p class="c">${inlineHtml(b.text, false)}</p>`;
+    if (b.t === "h1") return `<h1 dir="auto">${inlineHtml(b.text, false)}</h1>`;
+    if (b.t === "h2") return `<h2 dir="auto">${inlineHtml(b.text, false)}</h2>`;
+    if (b.t === "h3") return `<h3 dir="auto">${inlineHtml(b.text, false)}</h3>`;
+    if (b.t === "center") return `<p class="c" dir="auto">${inlineHtml(b.text, false)}</p>`;
     if (b.t === "hr") return "<hr>";
-    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li>${inlineHtml(i)}</li>`).join("")}</ul>`;
-    if (b.t === "ol") return `<ol>${b.items.map((i) => `<li>${inlineHtml(i)}</li>`).join("")}</ol>`;
+    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li dir="auto">${inlineHtml(i)}</li>`).join("")}</ul>`;
+    if (b.t === "ol") return `<ol>${b.items.map((i) => `<li dir="auto">${inlineHtml(i)}</li>`).join("")}</ol>`;
     if (b.t === "table") { const head = !b.plain && b.rows.length > 2; const ws = colWidths(b.rows, 100);
-      return `<table class="${b.plain ? "plain" : ""}"><colgroup>${ws.map((w) => `<col style="width:${w}%">`).join("")}</colgroup>${b.rows.map((r, i) => `<tr>${ws.map((_, j) => head && i === 0 ? `<th>${inlineHtml(r[j] || "", false)}</th>` : `<td>${inlineHtml(r[j] || "", false)}</td>`).join("")}</tr>`).join("")}</table>`; }
-    return `<p>${inlineHtml(b.text)}</p>`;
+      return `<table class="${b.plain ? "plain" : ""}"><colgroup>${ws.map((w) => `<col style="width:${w}%">`).join("")}</colgroup>${b.rows.map((r, i) => `<tr>${ws.map((_, j) => head && i === 0 ? `<th dir="auto">${inlineHtml(r[j] || "", false)}</th>` : `<td dir="auto">${inlineHtml(r[j] || "", false)}</td>`).join("")}</tr>`).join("")}</table>`; }
+    return `<p dir="auto">${inlineHtml(b.text)}</p>`;
   }).join("");
 }
 function paperHtml(body) {
   const f = S.firm;
-  return `<div class="paper" id="paper"><div class="lh"><img class="w" src="${LOGO.textLight}" alt="${esc(f.nameAr)}"><img class="m" src="${LOGO.iconLight}" alt=""></div>${blocksHtml(parseBlocks(body))}
+  return `<div class="paper" id="paper" dir="${docDir(body)}"><div class="lh"><img class="w" src="${LOGO.textLight}" alt="${esc(f.nameAr)}"><img class="m" src="${LOGO.iconLight}" alt=""></div>${blocksHtml(parseBlocks(body))}
     <div class="ft"><span>${esc([f.address || f.city, f.email, f.website, f.phone].filter(Boolean).join("  |  "))}</span><span>صفحة 1</span></div></div>`;
 }
 /* review checklist shown above the preview */
@@ -84,25 +91,27 @@ function docChecks(body) {
 const X = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const NAVY = "152335", BRONZE = "A3836B", RULE = "CFC6BD", SHADE = "F1EBE5";
 function wRuns(text, o = {}) {
+  const rtl = o.ltr ? '<w:rtl w:val="0"/>' : "<w:rtl/>";
   return inlineRuns(text, o.keyBold !== false && !o.bold).map((r) => {
     const b = o.bold || r.bold;
-    return `<w:r><w:rPr>${o.rStyle ? `<w:rStyle w:val="${o.rStyle}"/>` : ""}${b ? "<w:b/><w:bCs/>" : ""}${o.color ? `<w:color w:val="${o.color}"/>` : ""}${o.size ? `<w:sz w:val="${o.size}"/><w:szCs w:val="${o.size}"/>` : ""}${r.blank ? '<w:highlight w:val="yellow"/>' : ""}<w:rtl/></w:rPr><w:t xml:space="preserve">${X(r.text)}</w:t></w:r>`;
+    return `<w:r><w:rPr>${o.rStyle ? `<w:rStyle w:val="${o.rStyle}"/>` : ""}${b ? "<w:b/><w:bCs/>" : ""}${o.color ? `<w:color w:val="${o.color}"/>` : ""}${o.size ? `<w:sz w:val="${o.size}"/><w:szCs w:val="${o.size}"/>` : ""}${r.blank ? '<w:highlight w:val="yellow"/>' : ""}${rtl}</w:rPr><w:t xml:space="preserve">${X(r.text)}</w:t></w:r>`;
   }).join("");
 }
 function wP(text, o = {}) {
-  const ppr = `${o.style ? `<w:pStyle w:val="${o.style}"/>` : ""}${o.keepNext ? "<w:keepNext/>" : ""}${o.num ? `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${o.num}"/></w:numPr>` : ""}${o.border ? `<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="${BRONZE}"/></w:pBdr>` : ""}<w:bidi/>${o.spacing || ""}${o.jc ? `<w:jc w:val="${o.jc}"/>` : ""}`;
+  o = { ...o, ltr: text ? isLatin(text) : DOC_DIR === "ltr" };
+  const ppr = `${o.style ? `<w:pStyle w:val="${o.style}"/>` : ""}${o.keepNext ? "<w:keepNext/>" : ""}${o.num ? `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${o.num}"/></w:numPr>` : ""}${o.border ? `<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="${BRONZE}"/></w:pBdr>` : ""}${o.ltr ? '<w:bidi w:val="0"/>' : "<w:bidi/>"}${o.spacing || ""}${o.jc ? `<w:jc w:val="${o.jc}"/>` : ""}`;
   return `<w:p><w:pPr>${ppr}</w:pPr>${text ? wRuns(text, o) : ""}</w:p>`;
 }
 function wTbl(b) {
   const head = !b.plain && b.rows.length > 2; const ws = colWidths(b.rows, 9300);
   const bd = b.plain ? "nil" : "single";
   const borders = ["top", "left", "bottom", "right", "insideH", "insideV"].map((k) => `<w:${k} w:val="${bd}" w:sz="4" w:space="0" w:color="${RULE}"/>`).join("");
-  return `<w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="5000" w:type="pct"/><w:jc w:val="center"/><w:tblBorders>${borders}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr>
+  return `<w:tbl><w:tblPr>${DOC_DIR === "rtl" ? "<w:bidiVisual/>" : ""}<w:tblW w:w="5000" w:type="pct"/><w:jc w:val="center"/><w:tblBorders>${borders}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr>
     <w:tblGrid>${ws.map((w) => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>
     ${b.rows.map((r, i) => `<w:tr><w:trPr><w:cantSplit/>${head && i === 0 ? "<w:tblHeader/>" : ""}</w:trPr>${ws.map((w, j) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${head && i === 0 ? `<w:shd w:val="clear" w:color="auto" w:fill="${SHADE}"/>` : ""}<w:vAlign w:val="center"/></w:tcPr>${wP(r[j] || "", { style: "TableText", bold: (head && i === 0) || (b.plain && i === 0), keyBold: false, jc: b.plain ? "center" : undefined })}</w:tc>`).join("")}</w:tr>`).join("")}</w:tbl>${wP("", { style: "Gap" })}`;
 }
 function docxParts(title, body) {
-  const f = S.firm; let numId = 1; const nums = [];
+  const f = S.firm; let numId = 1; const nums = []; DOC_DIR = docDir(body);
   const content = parseBlocks(body).map((b) => {
     if (b.t === "h1") return wP(b.text, { style: "Title" });
     if (b.t === "h2") return wP(b.text, { style: "Heading1" });
@@ -127,7 +136,7 @@ function docxParts(title, body) {
     <w:p><w:pPr><w:pStyle w:val="Footer"/><w:pBdr><w:top w:val="single" w:sz="4" w:space="4" w:color="${RULE}"/></w:pBdr><w:bidi/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space="preserve">${X([f.address || f.city, f.email, f.website, f.phone].filter(Boolean).join("   |   "))}</w:t></w:r></w:p>
     <w:p><w:pPr><w:pStyle w:val="Footer"/><w:bidi/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space="preserve">صفحة </w:t></w:r>${fld("PAGE")}<w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space="preserve"> من </w:t></w:r>${fld("NUMPAGES")}</w:p></w:ftr>`;
   const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${NS}><w:body>${content}
-    <w:sectPr><w:headerReference w:type="default" r:id="rIdH"/><w:footerReference w:type="default" r:id="rIdF"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="2000" w:right="1300" w:bottom="1500" w:left="1300" w:header="600" w:footer="500" w:gutter="0"/><w:bidi/></w:sectPr></w:body></w:document>`;
+    <w:sectPr><w:headerReference w:type="default" r:id="rIdH"/><w:footerReference w:type="default" r:id="rIdF"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="2000" w:right="1300" w:bottom="1500" w:left="1300" w:header="600" w:footer="500" w:gutter="0"/>${DOC_DIR === "rtl" ? "<w:bidi/>" : ""}</w:sectPr></w:body></w:document>`;
   const rpr = (o) => `<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="${o.font || "Simplified Arabic"}"/>${o.b ? "<w:b/><w:bCs/>" : ""}${o.color ? `<w:color w:val="${o.color}"/>` : ""}<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/><w:rtl/></w:rPr>`;
   const st = (id, name, ppr, r, extra = "") => `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${name}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>${extra}<w:pPr><w:bidi/>${ppr}</w:pPr>${rpr(r)}</w:style>`;
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -194,9 +203,10 @@ mark { background: none; color: inherit; }
 .ft { border-top: 1px solid #e5ddd5; margin-top: 14px; padding-top: 6px; font: 8.5pt "IBM Plex Sans Arabic", sans-serif; color: #6b7280; text-align: center; }`;
 function printHtml(title, body) {
   const f = S.firm;
-  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title>
+  const dir = docDir(body);
+  return `<!doctype html><html lang="${dir === "ltr" ? "en" : "ar"}" dir="${dir}"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&family=Noto+Naskh+Arabic:wght@400;600;700&display=block">
-<style>${PRINT_CSS}</style></head><body><table class="page">
+<style>${PRINT_CSS}${dir === "ltr" ? 'body{direction:ltr;font-family:Georgia,"Times New Roman",serif;font-size:12pt}' : ""}</style></head><body><table class="page">
 <thead><tr><td><div class="lh"><img class="w" src="${LOGO.textLight}" alt=""><img class="m" src="${LOGO.iconLight}" alt=""></div></td></tr></thead>
 <tfoot><tr><td><div class="ft">${esc([f.nameAr, f.cr ? "س.ت " + f.cr : "", f.address || f.city, f.phone, f.email, f.website].filter(Boolean).join("  |  "))}</div></td></tr></tfoot>
 <tbody><tr><td>${blocksHtml(parseBlocks(body))}</td></tr></tbody></table></body></html>`;

@@ -122,7 +122,7 @@ const PLEADING_TYPES = {
   closing: { t: "مذكرة ختامية", hint: "تلخيص الدعوى والطلبات النهائية" },
   execution: { t: "طلب تنفيذ", hint: "بيانات السند التنفيذي والمطلوب تنفيذه" },
 };
-const DOC_KINDS = { contract: "عقد", proposal: "عرض أتعاب", pleading: "لائحة / مذكرة", opinion: "رأي قانوني", invoice: "مطالبة مالية" };
+const DOC_KINDS = { contract: "عقد أتعاب", proposal: "عرض أتعاب", pleading: "لائحة / مذكرة", opinion: "رأي قانوني", invoice: "مطالبة مالية", agreement: "عقد", creview: "تقرير مراجعة عقد" };
 const OBJ_GUIDE = {
   appeal: `لائحة الاعتراض بطلب الاستئناف (نظام المرافعات الشرعية): تُقدَّم خلال ثلاثين يومًا من تسلّم صورة الحكم (عشرة أيام في المستعجلة)، وتشتمل على: بيان الحكم المعترض عليه (رقمه وتاريخه والمحكمة والدائرة)، وتاريخ التسلّم، وبيانات المعترض والمعترض ضده، والأسباب التي بُني عليها الاعتراض (خطأ في الوقائع أو في تطبيق النظام أو إغفال دفوع أو بينات…)، والطلبات (نقض الحكم أو تعديله والحكم بـ…). يجوز طلب نظرها مرافعةً وتقديم ما لم يُقدَّم من بينات.`,
   cassation: `لائحة الاعتراض بطلب النقض أمام المحكمة العليا: تُقدَّم خلال ثلاثين يومًا من تسلّم صورة حكم محكمة الاستئناف، ولا تُقبل إلا على أحد الأسباب المحددة نظامًا (مع التحقق من المادة): مخالفة أحكام الشريعة الإسلامية أو ما يصدره ولي الأمر من أنظمة لا تتعارض معها؛ صدور الحكم من محكمة غير مشكّلة تشكيلًا سليمًا؛ صدوره من محكمة أو دائرة غير مختصة؛ الخطأ في تكييف الواقعة أو وصفها وصفًا غير سليم. المحكمة العليا لا تنظر الوقائع، فاجعل كل سبب مرتبطًا بأحد هذه الأسباب صراحة، واختم بطلب نقض الحكم وإعادته.`,
@@ -509,7 +509,7 @@ A.draftFor = (el) => { const c = caseById(el.dataset.id); const k = el.dataset.k
   go("drafting", null, k); };
 
 /* ---------- Document editor ---------- */
-A.openDoc = (el) => go("doc", el.dataset.id);
+A.openDoc = (el) => { const d = byId(S.data.docs, el.dataset.id); go(d?.kind === "creview" ? "creview" : "doc", el.dataset.id); };
 VIEWS.doc = () => {
   const d = byId(S.data.docs, S.route.id);
   if (!d) return S.loaded.docs ? `<div class="card">${emptyBox("docs", "لم نجد المستند", "", `<button class="btn" data-act="go" data-r="drafting">العودة</button>`)}</div>` : `<div class="thinking">جارٍ التحميل…</div>`;
@@ -517,19 +517,21 @@ VIEWS.doc = () => {
   const body = generating ? S.gen.text : (S.drafts["doc." + d.id] ?? d.body);
   const c = caseById(d.caseId);
   after.push(livePreview);
-  return `<div class="crumbs"><a data-act="go" data-r="drafting">الصياغة</a><span>/</span><span>${esc(DOC_KINDS[d.kind])}</span>${c ? `<span>/</span><a data-act="openCase" data-id="${c.id}">${esc(c.title)}</a>` : ""}</div>
-  <div class="page-head"><div class="grow"><input id="doc-title" class="inp" style="font-family:var(--f-doc);font-size:21px;font-weight:700;border-color:transparent;padding-inline:0;background:transparent" value="${esc(d.title)}" data-draft="doct.${d.id}" aria-label="عنوان المستند"></div>
+  return `<div class="crumbs"><a data-act="go" data-r="${["agreement", "creview"].includes(d.kind) ? "contracts" : "drafting"}">${["agreement", "creview"].includes(d.kind) ? "العقود" : "الصياغة"}</a><span>/</span><span>${esc(DOC_KINDS[d.kind])}</span>${c ? `<span>/</span><a data-act="openCase" data-id="${c.id}">${esc(c.title)}</a>` : ""}</div>
+  <div class="page-head"><div class="grow"><input id="doc-title" class="inp" dir="auto" style="font-family:var(--f-doc);font-size:21px;font-weight:700;border-color:transparent;padding-inline:0;background:transparent" value="${esc(d.title)}" data-draft="doct.${d.id}" aria-label="عنوان المستند"></div>
     <div class="row">${generating ? `<span class="thinking">يكتب المساعد…</span><button class="btn" data-act="stopGen">إيقاف</button>` : `
       <button class="btn primary" data-act="saveDoc" data-id="${d.id}">${icon("check")}حفظ</button>
       <button class="btn" data-act="exportDocx" data-id="${d.id}">${icon("download")}Word</button>
       <button class="btn gold" data-act="exportPdf" data-id="${d.id}">${icon("download")}PDF</button>
       <button class="btn" data-act="sendDoc" data-id="${d.id}">${icon("send")}إرسال للعميل</button>
+      ${d.kind === "agreement" && S.caps.sample ? `<button class="btn" data-act="reviewContract" data-doc="${d.id}">${icon("scale")}مراجعة وتحكيم</button><button class="btn" data-act="translateFrom" data-id="${d.id}">${icon("chat")}ترجمة</button>` : ""}
+      ${d.kind === "creview" ? `<button class="btn" data-act="openReview" data-id="${d.id}">${icon("eye")}عرض التقرير التفاعلي</button>` : ""}
       <button class="btn" data-act="copyDoc">${icon("copy")}نسخ النص</button>
       <button class="btn" data-act="aiEdit" data-id="${d.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}تعديل بالمساعد</button>
       <button class="btn ghost" data-act="toggleFinal" data-id="${d.id}">${d.status === "final" ? "إرجاع لمسودة" : "اعتماد كنهائي"}</button>
       <button class="btn ghost danger" data-act="deleteDoc" data-id="${d.id}" aria-label="حذف">${icon("trash")}</button>`}</div></div>
   <div class="editor"><div class="field"><label for="doc-body">النص <span class="muted">— # عنوان · ## قسم · 1. بند مرقم · - نقطة · | جدول | · !| توقيع | · > سطر في الوسط · **غامق**</span></label>
-      <textarea id="doc-body" class="inp" data-draft="doc.${d.id}" data-live="preview" ${generating ? "readonly" : ""}>${esc(body)}</textarea></div>
+      <textarea id="doc-body" class="inp" dir="auto" data-draft="doc.${d.id}" data-live="preview" ${generating ? "readonly" : ""}>${esc(body)}</textarea></div>
     <div class="field"><label>المعاينة بترويسة المكتب</label><div id="doc-checks"></div><div id="preview"></div></div></div>`;
 };
 function livePreview() {

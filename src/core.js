@@ -216,7 +216,7 @@ function afterRender() { while (after.length) { try { after.shift()(); } catch (
 function renderSide() {
   const pend = pendingForMe().length;
   const late = openTasks().filter((t) => isMine(t) && daysLeft(t.due) !== null && daysLeft(t.due) < 0).length;
-  const n = (k, label, ic, badge) => `<a class="${S.route.name === k || (k === "cases" && S.route.name === "case") || (k === "drafting" && S.route.name === "doc") || (k === "consults" && S.route.name === "consult") ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
+  const n = (k, label, ic, badge) => `<a class="${S.route.name === k || (k === "cases" && S.route.name === "case") || (k === "drafting" && S.route.name === "doc" && !["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)) || (k === "consults" && S.route.name === "consult") || (k === "contracts" && (S.route.name === "creview" || (S.route.name === "doc" && ["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)))) ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
   const me = myLawyer();
   $(".side").innerHTML = `
     <div class="brand"><img class="mark" src="${LOGO.iconDark}" alt="ركز"><img class="word" src="${LOGO.textDark}" alt="ركز النظامية للمحاماة والاستشارات القانونية"></div>
@@ -228,7 +228,8 @@ function renderSide() {
       ${n("najiz", "ناجز", "link")}
       ${n("consults", "الاستشارات", "chat", S.data.consults.filter((x) => x.status !== "done" && (!myLid() || x.lawyerId === myLid())).length || "")}
       <div class="nav-sec">الصياغة</div>
-      ${n("drafting", "العقود واللوائح والعروض", "docs")}
+      ${n("contracts", "العقود", "contract")}
+      ${n("drafting", "اللوائح وعروض الأتعاب", "docs")}
       ${window.RAKZ_LAWS ? n("laws", "المكتبة النظامية", "scale") : ""}
       <div class="nav-sec">الإدارة</div>
       ${isManager() ? n("finance", "المالية", "coin", S.data.fees.filter((f) => f.status === "pending").length || "") : ""}
