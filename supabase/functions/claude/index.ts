@@ -8,6 +8,9 @@ import Anthropic from "npm:@anthropic-ai/sdk";
 // The firm's choice: the most capable model. The app asks for a tier; effort controls depth and cost.
 const MODEL = "claude-opus-5-5";
 const EFFORT: Record<string, "low" | "medium" | "high"> = { quick: "low", default: "medium", complex: "high" };
+// Supabase stops a function at 150 s (free plan). Stop a little earlier and tell the browser to ask for the rest
+// in a follow-up call («time_limit»), so long contracts and reviews finish across several calls.
+const TIME_BUDGET_MS = 130_000;
 
 const SYSTEM =
   "أنت المساعد القانوني لمنصة «ركز النظامية للمحاماة والاستشارات القانونية» في المملكة العربية السعودية. " +
@@ -42,10 +45,11 @@ Deno.serve(async (req) => {
   const turns = (body.messages ?? []).filter((m) => m && m.content);
   if (!turns.length || turns[turns.length - 1].role !== "user") return new Response("Bad messages", { status: 400, headers: cors });
 
-  // Images ride on the final user turn, before its text.
+  // Images ride on the first user turn, before its text, so they stay in view on continuation calls.
   const images = (body.images ?? []).slice(0, 8);
+  const first = turns.findIndex((m) => m.role === "user");
   const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((m, i) =>
-    i === turns.length - 1 && images.length
+    i === first && images.length
       ? { role: "user", content: [...images.map((im) => ({ type: "image" as const, source: { type: "base64" as const, media_type: im.media_type, data: im.data } })), { type: "text" as const, text: m.content }] }
       : { role: m.role, content: m.content },
   );
@@ -53,7 +57,8 @@ Deno.serve(async (req) => {
   const enc = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (o: unknown) => controller.enqueue(enc.encode(JSON.stringify(o) + "\n"));
+      const send = (o: unknown) => { try { controller.enqueue(enc.encode(JSON.stringify(o) + "\n")); } catch { /* browser went away */ } };
+      const started = Date.now(); let timedOut = false;
       try {
         if (!Deno.env.get("ANTHROPIC_API_KEY")) { send({ error: "not_configured" }); return; }
         // Reads ANTHROPIC_API_KEY. An organization-level key must also name a workspace (secret ANTHROPIC_WORKSPACE_ID).
@@ -72,16 +77,22 @@ Deno.serve(async (req) => {
           } as Anthropic.Beta.MessageStreamParams,
           { signal: req.signal },
         );
-        for await (const event of s) {
-          if (event.type === "content_block_delta" && event.delta.type === "text_delta") send({ t: event.delta.text });
-        }
+        // Keep-alive while the model is thinking, and a hard stop before the platform's wall-clock limit.
+        const tick = setInterval(() => { if (Date.now() - started > TIME_BUDGET_MS) { timedOut = true; s.abort(); } else send({ k: 1 }); }, 10_000);
+        try {
+          for await (const event of s) {
+            if (event.type === "content_block_delta" && event.delta.type === "text_delta") send({ t: event.delta.text });
+            if (Date.now() - started > TIME_BUDGET_MS) { timedOut = true; s.abort(); break; }
+          }
+        } catch (e) { if (!timedOut) throw e; } finally { clearInterval(tick); }
+        if (timedOut) { send({ done: true, stop: "time_limit" }); return; }
         const final = await s.finalMessage();
         if (final.stop_reason === "refusal") send({ error: "refused" });
         else send({ done: true, stop: final.stop_reason });
       } catch (e) {
         if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) send({ error: "not_configured" });
         else if (e instanceof Anthropic.RateLimitError) send({ error: "rate_limited" });
-        else if (e instanceof Anthropic.APIUserAbortError) send({ error: "cancelled" });
+        else if (e instanceof Anthropic.APIUserAbortError) send(timedOut ? { done: true, stop: "time_limit" } : { error: "cancelled" });
         else if (e instanceof Anthropic.BadRequestError) { console.error(e.message); send({ error: /workspace/i.test(e.message) ? "workspace_key" : /credit|balance|billing/i.test(e.message) ? "no_credit" : "invalid_request" }); }
         else { console.error(e); send({ error: "upstream_error" }); }
       } finally {

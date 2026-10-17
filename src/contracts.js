@@ -163,7 +163,7 @@ ${[...T.checks, ...SA_CHECKS].map((c) => "- " + c).join("\n")}
   const id = await add("docs", { ...base, body: "" });
   ["subject", "other", "terms", "value", "duration"].forEach((k) => delete S.drafts["cd." + k]);
   if (d.caseId) await logCase(d.caseId, "doc", `بدأت صياغة ${T.ar}`);
-  await streamToDoc(id, prompt, "complex", (t) => `صاغ المساعد مسودة ${T.ar}`, d.caseId);
+  await streamToDoc(id, prompt, "default", (t) => `صاغ المساعد مسودة ${T.ar}`, d.caseId);
 };
 function contractSkeleton(T, d, client) {
   const B0 = "[........]";
@@ -261,7 +261,9 @@ ${text ? `نص العقد:\n"""\n${text.slice(0, 70000)}\n"""` : "العقد م�
 
 أعد JSON فقط:
 {"title":"عنوان العقد","language":"ar|en|bi","type":"${CONTRACT_TYPES.map((t) => t.k).join("|")}","parties":[{"name":"","role":""}],"summary":"خلاصة العقد في 4-6 أسطر","governingLaw":"","disputeResolution":"","keyTerms":[{"label":"المدة/القيمة/…","value":"","clause":""}],"riskScore":0,"verdict":"حكم عام موجز: يوقّع / يوقّع بعد التعديلات / لا يوقّع","issues":[{"severity":"high|medium|low","clause":"","quote":"","title":"","problem":"","basis":"","impact":"","fix":"","wording":""}],"missing":[{"clause":"","why":"","wording":""}],"compliance":[{"item":"","status":"ok|warn|fail|na","note":""}],"ambiguities":[""],"negotiation":["نقاط تفاوض مرتبة بالأولوية"]}`;
-    const opts = { modelTier: "complex" }; if (images.length) opts.images = images;
+    let last = 0;
+    const opts = { modelTier: "default", onText: ({ text, round }) => { if (Date.now() - last < 1200) return; last = Date.now(); S.crBusy = `يكتب التقرير… ${(text.length / 1000).toFixed(1)} ألف حرف${round ? " (متابعة)" : ""}`; const b = document.querySelector(".thinking"); if (b && S.route.name === "contracts") b.textContent = S.crBusy; } };
+    if (images.length) opts.images = images;
     const r = await S.caps.sample.json(prompt, opts);
     if (!r || typeof r !== "object") throw { code: "invalid_json" };
     r.issues = (Array.isArray(r.issues) ? r.issues : []).filter((i) => i && i.title).map((i) => ({ ...i, severity: SEV[i.severity] ? i.severity : "medium" })).sort((a, b) => SEV[b.severity].n - SEV[a.severity].n);
@@ -363,7 +365,7 @@ ${langRules(r.language === "en" ? "en" : r.language === "bi" ? "bi" : "ar")}
 ${src.slice(0, 70000)}
 """`;
   const id = await add("docs", { kind: "agreement", ctype: d.ctype || "", lang: r.language === "en" ? "en" : r.language === "bi" ? "bi" : "ar", title: `${r.title || "عقد"} — ${r.language === "en" ? "Revised" : "معدّل"}`, clientId: d.clientId || "", caseId: d.caseId || "", fromReview: d.id, body: "", status: "draft", updatedAt: nowIso() });
-  await streamToDoc(id, prompt, "complex", () => `صاغ المساعد نسخة معدلة من «${r.title || "العقد"}»`, d.caseId);
+  await streamToDoc(id, prompt, "default", () => `صاغ المساعد نسخة معدلة من «${r.title || "العقد"}»`, d.caseId);
 };
 
 /* Translation of a contract: Arabic ↔ English, or a side-by-side bilingual version. */

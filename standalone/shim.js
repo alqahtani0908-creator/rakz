@@ -180,9 +180,9 @@
     const b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.readAsDataURL(out); });
     return { media_type: "image/jpeg", data: b64 };
   }
-  async function sample(input, opts = {}) {
-    const messages = typeof input === "string" ? [{ role: "user", content: input }] : input;
-    const images = opts.images ? await Promise.all([...(opts.images instanceof Blob ? [opts.images] : opts.images)].map(toImagePart)) : [];
+  /* One call to the function. Returns what streamed and why it stopped; «time_limit» means the platform's
+     wall-clock budget ran out (or the stream was cut) and the rest must be asked for in a follow-up call. */
+  async function sampleOnce(messages, images, opts, onDelta) {
     let res;
     try {
       res = await fetch(CFG.supabaseUrl + "/functions/v1/claude", {
@@ -198,15 +198,33 @@
         const { value, done } = await reader.read(); if (done) break;
         buf += dec.decode(value, { stream: true }); const lines = buf.split("\n"); buf = lines.pop();
         for (const line of lines) {
-          if (!line.trim()) continue; const ev = JSON.parse(line);
-          if (ev.t) { text += ev.t; opts.onText && opts.onText({ text, delta: ev.t }); }
+          if (!line.trim()) continue; let ev; try { ev = JSON.parse(line); } catch { continue; }
+          if (ev.t) { text += ev.t; onDelta(ev.t); }
           if (ev.done) stop = ev.stop; if (ev.error) failure = ev.error;
         }
       }
-    } catch (e) { throw e?.name === "AbortError" ? { ...err("cancelled"), text } : { ...err("upstream_error", String(e)), text }; }
-    if (failure) throw { ...err(failure), text: failure === "refused" ? undefined : text };
+    } catch (e) { if (e?.name === "AbortError") throw { ...err("cancelled"), text }; if (!text) throw err("upstream_error", String(e)); }
+    if (!stop && !failure) stop = "time_limit"; // the connection closed mid-answer
+    return { text, stop, failure };
+  }
+  const CONTINUE = "انقطع ردك السابق بسبب حد زمني. أكمل من آخر حرف كتبته تمامًا، دون تكرار أي جزء مما كتبت ودون مقدمة أو تعليق، وبالصيغة نفسها.";
+  // A continuation sometimes repeats the tail it was given; drop the overlap.
+  const joinParts = (a, b) => { for (let k = Math.min(400, a.length, b.length); k >= 12; k--) if (a.endsWith(b.slice(0, k))) return a + b.slice(k); return a + b; };
+  async function sample(input, opts = {}) {
+    const base = typeof input === "string" ? [{ role: "user", content: input }] : input;
+    const images = opts.images ? await Promise.all([...(opts.images instanceof Blob ? [opts.images] : opts.images)].map(toImagePart)) : [];
+    let text = "", stop = null;
+    for (let round = 0; round < 8; round++) {
+      const messages = round === 0 ? base : [...base, { role: "assistant", content: text }, { role: "user", content: CONTINUE }];
+      const before = text; let part = "";
+      const r = await sampleOnce(messages, images, opts, (d) => { part += d; if (opts.onText) { const cur = round ? joinParts(before, part) : part; opts.onText({ text: cur, delta: d, round }); } });
+      if (r.failure) throw { ...err(r.failure), text: r.failure === "refused" ? undefined : joinParts(before, r.text) };
+      text = round ? joinParts(before, r.text) : r.text; stop = r.stop;
+      if (stop !== "time_limit") break;
+      if (!r.text.trim()) throw { ...err("timeout"), text }; // nothing came back within the budget
+    }
     if (!text.trim()) throw err("empty_completion");
-    return { text, truncated: stop === "max_tokens", modelTierApplied: opts.modelTier || "default" };
+    return { text, truncated: stop === "max_tokens" || stop === "time_limit", modelTierApplied: opts.modelTier || "default" };
   }
   sample.json = async (input, opts = {}) => {
     const ask = typeof input === "string" ? input + "\n\nأعد JSON صالحًا فقط دون أي نص قبله أو بعده." : input;
