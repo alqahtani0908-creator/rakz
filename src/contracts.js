@@ -259,14 +259,27 @@ ${text ? `نص العقد:\n"""\n${text.slice(0, 70000)}\n"""` : "العقد م�
 5) riskScore من 0 (آمن) إلى 100 (شديد الخطورة) لمن نمثّله.
 6) compliance: قيّم كل نقطة من نقاط الفحص أعلاه ونقاط النوع: ok أو warn أو fail أو na.
 
-أعد JSON فقط:
-{"title":"عنوان العقد","language":"ar|en|bi","type":"${CONTRACT_TYPES.map((t) => t.k).join("|")}","parties":[{"name":"","role":""}],"summary":"خلاصة العقد في 4-6 أسطر","governingLaw":"","disputeResolution":"","keyTerms":[{"label":"المدة/القيمة/…","value":"","clause":""}],"riskScore":0,"verdict":"حكم عام موجز: يوقّع / يوقّع بعد التعديلات / لا يوقّع","issues":[{"severity":"high|medium|low","clause":"","quote":"","title":"","problem":"","basis":"","impact":"","fix":"","wording":""}],"missing":[{"clause":"","why":"","wording":""}],"compliance":[{"item":"","status":"ok|warn|fail|na","note":""}],"ambiguities":[""],"negotiation":["نقاط تفاوض مرتبة بالأولوية"]}`;
+صيغة الإخراج — سطر JSON مستقل لكل عنصر (JSON Lines)، بلا مصفوفة تجمعها، وبلا أي نص أو علامات markdown خارج الأسطر. ابدأ بسطر meta، ثم الملاحظات بالأهم فالأهم، ثم البقية. أقصى حد: 18 ملاحظة و8 بنود ناقصة، وكل حقل موجز.
+{"k":"meta","title":"عنوان العقد","language":"ar|en|bi","type":"${CONTRACT_TYPES.map((t) => t.k).join("|")}","parties":[{"name":"","role":""}],"summary":"خلاصة في 4-6 أسطر","governingLaw":"","disputeResolution":"","riskScore":0,"verdict":"يوقّع / يوقّع بعد التعديلات / لا يوقّع، مع سبب موجز"}
+{"k":"term","label":"المدة/القيمة/…","value":"","clause":""}
+{"k":"issue","severity":"high|medium|low","clause":"","quote":"","title":"","problem":"","basis":"","impact":"","fix":"","wording":""}
+{"k":"missing","clause":"","why":"","wording":""}
+{"k":"comp","item":"","status":"ok|warn|fail|na","note":""}
+{"k":"amb","t":"موضع غموض أو تعارض"}
+{"k":"neg","t":"نقطة تفاوض"}`;
+    // One JSON object per line: a cut or a repeat at a continuation boundary costs at most one line, and the
+    // findings can be counted live while the report is being written.
+    const parseLines = (t) => { const seen = new Set(); const out = []; for (const raw of String(t).split("\n")) { const l = raw.trim().replace(/^```\w*|```$/g, "").replace(/,$/, ""); if (!l.startsWith("{") || seen.has(l)) continue; try { const o = JSON.parse(l); if (o && o.k) { seen.add(l); out.push(o); } } catch {} } return out; };
     let last = 0;
-    const opts = { modelTier: "default", onText: ({ text, round }) => { if (Date.now() - last < 1200) return; last = Date.now(); S.crBusy = `يكتب التقرير… ${(text.length / 1000).toFixed(1)} ألف حرف${round ? " (متابعة)" : ""}`; const b = document.querySelector(".thinking"); if (b && S.route.name === "contracts") b.textContent = S.crBusy; } };
+    const opts = { modelTier: "default", onText: ({ text, round }) => { if (Date.now() - last < 1200) return; last = Date.now(); const n = parseLines(text).filter((o) => o.k === "issue").length; S.crBusy = `يكتب التقرير… ${n ? `${n} ملاحظة حتى الآن` : `${(text.length / 1000).toFixed(1)} ألف حرف`}${round ? " (متابعة)" : ""}`; const b = document.querySelector(".thinking"); if (b && S.route.name === "contracts") b.textContent = S.crBusy; } };
     if (images.length) opts.images = images;
-    const r = await S.caps.sample.json(prompt, opts);
-    if (!r || typeof r !== "object") throw { code: "invalid_json" };
-    r.issues = (Array.isArray(r.issues) ? r.issues : []).filter((i) => i && i.title).map((i) => ({ ...i, severity: SEV[i.severity] ? i.severity : "medium" })).sort((a, b) => SEV[b.severity].n - SEV[a.severity].n);
+    const { text: out } = await S.caps.sample(prompt, opts);
+    const rows = parseLines(out); const meta = rows.find((o) => o.k === "meta");
+    if (!meta && !rows.some((o) => o.k === "issue")) throw { code: "invalid_json", text: out };
+    const pick = (k) => rows.filter((o) => o.k === k);
+    const r = { ...(meta || {}), keyTerms: pick("term"), issues: pick("issue"), missing: pick("missing"), compliance: pick("comp"), ambiguities: pick("amb").map((o) => o.t).filter(Boolean), negotiation: pick("neg").map((o) => o.t).filter(Boolean) };
+    delete r.k;
+    r.issues = r.issues.filter((i) => i && i.title).map((i) => ({ ...i, severity: SEV[i.severity] ? i.severity : "medium" })).sort((a, b) => SEV[b.severity].n - SEV[a.severity].n);
     r.missing = Array.isArray(r.missing) ? r.missing.filter((m) => m && m.clause) : [];
     r.compliance = Array.isArray(r.compliance) ? r.compliance.filter((c) => c && c.item) : [];
     r.reportLang = rlang; r.side = side;

@@ -85,8 +85,10 @@ Deno.serve(async (req) => {
             if (Date.now() - started > TIME_BUDGET_MS) { timedOut = true; s.abort(); break; }
           }
         } catch (e) { if (!timedOut) throw e; } finally { clearInterval(tick); }
-        if (timedOut) { send({ done: true, stop: "time_limit" }); return; }
+        const ms = Date.now() - started;
+        if (timedOut) { console.log(JSON.stringify({ ms, stop: "time_limit", tier: body.tier })); send({ done: true, stop: "time_limit" }); return; }
         const final = await s.finalMessage();
+        console.log(JSON.stringify({ ms, stop: final.stop_reason, tier: body.tier, out: final.usage?.output_tokens, in: final.usage?.input_tokens }));
         if (final.stop_reason === "refusal") send({ error: "refused" });
         else send({ done: true, stop: final.stop_reason });
       } catch (e) {
