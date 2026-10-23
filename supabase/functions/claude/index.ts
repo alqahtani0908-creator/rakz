@@ -8,9 +8,9 @@ import Anthropic from "npm:@anthropic-ai/sdk";
 // The firm's choice: the most capable model. The app asks for a tier; effort controls depth and cost.
 const MODEL = "claude-opus-5-5";
 const EFFORT: Record<string, "low" | "medium" | "high"> = { quick: "low", default: "medium", complex: "high" };
-// Supabase stops a function at 150 s (free plan). Stop a little earlier and tell the browser to ask for the rest
-// in a follow-up call («time_limit»), so long contracts and reviews finish across several calls.
-const TIME_BUDGET_MS = 130_000;
+// Supabase stops a function at 400 s on the Pro plan. Stop a little earlier and tell the browser to ask for the
+// rest in a follow-up call («time_limit»), so even very long contracts and reviews finish.
+const TIME_BUDGET_MS = 370_000;
 
 const SYSTEM =
   "أنت المساعد القانوني لمنصة «ركز النظامية للمحاماة والاستشارات القانونية» في المملكة العربية السعودية. " +
