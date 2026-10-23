@@ -517,21 +517,22 @@ VIEWS.doc = () => {
   const body = generating ? S.gen.text : (S.drafts["doc." + d.id] ?? d.body);
   const c = caseById(d.caseId);
   after.push(livePreview);
-  return `<div class="crumbs"><a data-act="go" data-r="${["agreement", "creview"].includes(d.kind) ? "contracts" : "drafting"}">${["agreement", "creview"].includes(d.kind) ? "العقود" : "الصياغة"}</a><span>/</span><span>${esc(DOC_KINDS[d.kind])}</span>${c ? `<span>/</span><a data-act="openCase" data-id="${c.id}">${esc(c.title)}</a>` : ""}</div>
+  return `<div class="crumbs"><a data-act="go" data-r="${["agreement", "creview"].includes(d.kind) ? "contracts" : d.kind === "invoice" ? "finance" : "drafting"}">${["agreement", "creview"].includes(d.kind) ? "العقود" : d.kind === "invoice" ? "المالية" : "الصياغة"}</a><span>/</span><span>${esc(DOC_KINDS[d.kind])}</span>${c ? `<span>/</span><a data-act="openCase" data-id="${c.id}">${esc(c.title)}</a>` : ""}</div>
   <div class="page-head"><div class="grow"><input id="doc-title" class="inp" dir="auto" style="font-family:var(--f-doc);font-size:21px;font-weight:700;border-color:transparent;padding-inline:0;background:transparent" value="${esc(d.title)}" data-draft="doct.${d.id}" aria-label="عنوان المستند"></div>
     <div class="row">${generating ? `<span class="thinking">يكتب المساعد…</span><button class="btn" data-act="stopGen">إيقاف</button>` : `
-      <button class="btn primary" data-act="saveDoc" data-id="${d.id}">${icon("check")}حفظ</button>
+      ${d.locked ? "" : `<button class="btn primary" data-act="saveDoc" data-id="${d.id}">${icon("check")}حفظ</button>`}
       <button class="btn" data-act="exportDocx" data-id="${d.id}">${icon("download")}Word</button>
       <button class="btn gold" data-act="exportPdf" data-id="${d.id}">${icon("download")}PDF</button>
       <button class="btn" data-act="sendDoc" data-id="${d.id}">${icon("send")}إرسال للعميل</button>
       ${d.kind === "agreement" && S.caps.sample ? `<button class="btn" data-act="reviewContract" data-doc="${d.id}">${icon("scale")}مراجعة وتحكيم</button><button class="btn" data-act="translateFrom" data-id="${d.id}">${icon("chat")}ترجمة</button>` : ""}
       ${d.kind === "creview" ? `<button class="btn" data-act="openReview" data-id="${d.id}">${icon("eye")}عرض التقرير التفاعلي</button>` : ""}
       <button class="btn" data-act="copyDoc">${icon("copy")}نسخ النص</button>
-      <button class="btn" data-act="aiEdit" data-id="${d.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}تعديل بالمساعد</button>
+      ${d.locked ? (d.subtype === "tax" ? `<button class="btn ghost" data-act="issueCredit" data-id="${d.finId}">${icon("x")}إشعار دائن</button>` : "") : `<button class="btn" data-act="aiEdit" data-id="${d.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}تعديل بالمساعد</button>
       <button class="btn ghost" data-act="toggleFinal" data-id="${d.id}">${d.status === "final" ? "إرجاع لمسودة" : "اعتماد كنهائي"}</button>
-      <button class="btn ghost danger" data-act="deleteDoc" data-id="${d.id}" aria-label="حذف">${icon("trash")}</button>`}</div></div>
+      <button class="btn ghost danger" data-act="deleteDoc" data-id="${d.id}" aria-label="حذف">${icon("trash")}</button>`}`}</div></div>
+  ${d.locked ? `<div class="banner gold"><div class="grow"><b>${d.subtype === "credit" ? "إشعار دائن صادر" : "فاتورة ضريبية صادرة"}</b> — لا يُعدَّل نصها ولا تُحذف. للتصحيح أصدر إشعارًا دائنًا. تحمل رمز الاستجابة السريعة المطلوب من هيئة الزكاة والضريبة والجمارك.</div></div>` : ""}
   <div class="editor"><div class="field"><label for="doc-body">النص <span class="muted">— # عنوان · ## قسم · 1. بند مرقم · - نقطة · | جدول | · !| توقيع | · > سطر في الوسط · **غامق**</span></label>
-      <textarea id="doc-body" class="inp" dir="auto" data-draft="doc.${d.id}" data-live="preview" ${generating ? "readonly" : ""}>${esc(body)}</textarea></div>
+      <textarea id="doc-body" class="inp" dir="auto" data-draft="doc.${d.id}" data-live="preview" ${generating || d.locked ? "readonly" : ""}>${esc(body)}</textarea></div>
     <div class="field"><div class="row" style="justify-content:space-between"><label for="doc-paper">المعاينة على ورق المكتب</label><select id="doc-paper" class="inp" style="width:auto;padding-block:4px" data-ch="docPaper" data-id="${d.id}">${Object.entries(PAPERS).map(([k, v]) => opt(k, v.label, d.paper || "official")).join("")}</select></div><div id="doc-checks"></div><div id="preview"></div></div></div>`;
 };
 function livePreview() {

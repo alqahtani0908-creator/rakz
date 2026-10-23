@@ -117,7 +117,7 @@
     const ref = {
       id, path,
       async get() { return snapDoc(await getDoc(path), path); },
-      async set(data) { const { error } = await T().upsert({ path, collection, id, data, updated_at: new Date().toISOString() }); if (error) throw err(/requires_manager|journal_/.test(error.message) ? "forbidden" : /row-level|permission/i.test(error.message) ? "invalid_argument" : "unavailable", error.message); },
+      async set(data) { const { error } = await T().upsert({ path, collection, id, data, updated_at: new Date().toISOString() }); if (error) throw err(/requires_manager|journal_|tax_invoice_immutable/.test(error.message) ? "forbidden" : /row-level|permission/i.test(error.message) ? "invalid_argument" : "unavailable", error.message); },
       async update(patch) { const cur = await getDoc(path); if (!cur) throw err("invalid_argument", "document does not exist"); return ref.set(merge(cur.data, patch)); },
       async delete() { const { error } = await T().delete().eq("path", path); if (error) throw err("unavailable", error.message); },
       onSnapshot(next, onErr) {
@@ -1093,7 +1093,7 @@ const COLL = ["lawyers", "clients", "cases", "tasks", "docs", "consults", "finan
 function canWrite() { return !!S.caps.db && S.me.canWrite !== false; }
 function guardWrite() { if (!S.caps.db) { toast("قاعدة البيانات غير متاحة في هذا العرض. افتح المنصة من حسابك في Claude.", true); return false; } return true; }
 function dbErr(e) { console.error(e); const c = e?.code;
-  if (c === "forbidden") { const m = e.message || ""; toast(/journal_unbalanced/.test(m) ? "القيد غير متوازن: مجموع المدين يجب أن يساوي مجموع الدائن." : /journal_immutable/.test(m) ? "القيود المرحّلة لا تُعدَّل ولا تُحذف؛ صحّحها بقيد تسوية." : /finance/.test(m) ? "الشؤون المالية من صلاحية المدير." : "هذا الإجراء من صلاحية المدير.", true); throw e; } if (c === "invalid_argument") toast("رفضت المنصة الحفظ. تأكد أن الرابط مشارك معك بصلاحية تسمح بالتعديل.", true); else if (c === "quota_exceeded") toast("امتلأت سعة قاعدة البيانات. احذف سجلات قديمة أو انقل الأرشيف.", true); else toast("تعذّر الحفظ. حاول مرة أخرى بعد لحظات.", true); throw e; }
+  if (c === "forbidden") { const m = e.message || ""; toast(/journal_unbalanced/.test(m) ? "القيد غير متوازن: مجموع المدين يجب أن يساوي مجموع الدائن." : /journal_immutable/.test(m) ? "القيود المرحّلة لا تُعدَّل ولا تُحذف؛ صحّحها بقيد تسوية." : /tax_invoice_immutable/.test(m) ? "الفاتورة الضريبية الصادرة لا تُعدَّل ولا تُحذف؛ صحّحها بإشعار دائن." : /finance/.test(m) ? "الشؤون المالية من صلاحية المدير." : "هذا الإجراء من صلاحية المدير.", true); throw e; } if (c === "invalid_argument") toast("رفضت المنصة الحفظ. تأكد أن الرابط مشارك معك بصلاحية تسمح بالتعديل.", true); else if (c === "quota_exceeded") toast("امتلأت سعة قاعدة البيانات. احذف سجلات قديمة أو انقل الأرشيف.", true); else toast("تعذّر الحفظ. حاول مرة أخرى بعد لحظات.", true); throw e; }
 function clean(o) { return JSON.parse(JSON.stringify(o)); }
 async function add(coll, data) { if (!guardWrite()) throw new Error("ro"); const ref = S.caps.db.collection(coll).doc(); try { await ref.set(clean({ ...data, createdAt: nowIso(), createdBy: myLid() || S.me.id })); } catch (e) { dbErr(e); } return ref.id; }
 async function put(path, data) { if (!guardWrite()) throw new Error("ro"); try { await S.caps.db.doc(path).set(clean(data)); } catch (e) { dbErr(e); } }
@@ -1172,7 +1172,7 @@ function afterRender() { while (after.length) { try { after.shift()(); } catch (
 function renderSide() {
   const pend = pendingForMe().length;
   const late = openTasks().filter((t) => isMine(t) && daysLeft(t.due) !== null && daysLeft(t.due) < 0).length;
-  const n = (k, label, ic, badge) => `<a class="${S.route.name === k || (k === "cases" && S.route.name === "case") || (k === "drafting" && S.route.name === "doc" && !["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)) || (k === "consults" && S.route.name === "consult") || (k === "contracts" && (S.route.name === "creview" || (S.route.name === "doc" && ["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)))) ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
+  const n = (k, label, ic, badge) => `<a class="${S.route.name === k || (k === "cases" && S.route.name === "case") || (k === "drafting" && S.route.name === "doc" && !["agreement", "creview", "invoice"].includes(byId(S.data.docs, S.route.id)?.kind)) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") || (k === "consults" && S.route.name === "consult") || (k === "contracts" && (S.route.name === "creview" || (S.route.name === "doc" && ["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)))) ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
   const me = myLawyer();
   $(".side").innerHTML = `
     <div class="brand"><img class="mark" src="${LOGO.iconDark}" alt="ركز"><img class="word" src="${LOGO.textDark}" alt="ركز النظامية للمحاماة والاستشارات القانونية"></div>
@@ -1709,6 +1709,7 @@ function clientErrors(d) {
   const ph = String(d.phone || "").replace(/[\s-]/g, "");
   if (ph && !/^(05\d{8}|\+?9665\d{8})$/.test(ph)) e.push("الجوال بصيغة 05xxxxxxxx");
   if (d.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) e.push("البريد الإلكتروني غير صحيح");
+  if (d.vatNo && !/^3\d{13}3$/.test(d.vatNo)) e.push("الرقم الضريبي 15 رقمًا يبدأ وينتهي بالرقم 3");
   return e;
 }
 const clientComplete = (c) => !!c && clientErrors(c).length === 0;
@@ -1721,10 +1722,11 @@ function clientFields(c = {}, p = "") {
     ${f("rep", "الممثل النظامي (للمنشآت)", false)}
     ${f("phone", "الجوال", true, 'inputmode="tel" placeholder="05xxxxxxxx"')}
     ${f("email", "البريد الإلكتروني", false, 'type="email"')}
+    ${f("vatNo", "الرقم الضريبي (للمنشآت المسجلة)", false, 'inputmode="numeric" maxlength="15" placeholder="15 رقمًا يبدأ وينتهي بـ 3"')}
     ${f("address", "العنوان الوطني", true, 'placeholder="المدينة – الحي – الشارع – الرمز البريدي"')}
   </div>`;
 }
-const pickClient = (d, p) => ({ name: (d[p + "name"] || "").trim(), kind: d[p + "kind"] || "individual", idNo: (d[p + "idNo"] || "").replace(/\s/g, ""), rep: (d[p + "rep"] || "").trim(), phone: (d[p + "phone"] || "").replace(/[\s-]/g, ""), email: (d[p + "email"] || "").trim(), address: (d[p + "address"] || "").trim() });
+const pickClient = (d, p) => ({ name: (d[p + "name"] || "").trim(), kind: d[p + "kind"] || "individual", idNo: (d[p + "idNo"] || "").replace(/\s/g, ""), rep: (d[p + "rep"] || "").trim(), phone: (d[p + "phone"] || "").replace(/[\s-]/g, ""), email: (d[p + "email"] || "").trim(), vatNo: (d[p + "vatNo"] || "").replace(/\s/g, ""), address: (d[p + "address"] || "").trim() });
 VIEWS.clients = () => `<div class="page-head"><div><h1>العملاء</h1><p>${S.data.clients.length} عميل</p></div><button class="btn gold" data-act="newClient">${icon("plus")}عميل جديد</button></div>
   ${S.data.clients.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الاسم</th><th>النوع</th><th>الهوية / السجل</th><th>الجوال</th><th>البريد</th><th>القضايا</th><th></th></tr></thead><tbody>
   ${[...S.data.clients].sort((a, b) => a.name.localeCompare(b.name, "ar")).map((c) => `<tr data-act="clientCases" data-id="${c.id}"><td class="t primary-cell">${esc(c.name)}${clientComplete(c) ? "" : ` <span class="pill warn">بيانات ناقصة</span>`}</td><td>${c.kind === "company" ? "منشأة" : "فرد"}</td><td class="num">${esc(c.idNo || "—")}</td><td class="num">${esc(c.phone || "—")}</td><td>${esc(c.email || "—")}</td><td class="num">${S.data.cases.filter((x) => x.clientId === c.id).length}</td>
@@ -2277,6 +2279,7 @@ const scriptCounts = (t) => { const s = String(t || "").replace(/\[[^\]]*\]|\*\*
 const isLatin = (t) => { const c = scriptCounts(t); return c.la > c.ar; };
 const docDir = (body) => { const c = scriptCounts(body); return c.la > c.ar * 1.5 ? "ltr" : "rtl"; };
 let DOC_DIR = "rtl"; // set while building a .docx
+let DOCX_MEDIA = []; // images collected while building a .docx (QR codes)
 
 function parseBlocks(text) {
   const lines = String(text || "").replace(/\r/g, "").split("\n"); const out = []; let cur = null;
@@ -2290,6 +2293,7 @@ function parseBlocks(text) {
     close();
     if (!l) continue;
     if (/^-{3,}$|^_{3,}$/.test(l)) out.push({ t: "hr" });
+    else if (l.startsWith("@qr ")) out.push({ t: "qr", data: l.slice(4).trim() });
     else if (l.startsWith("### ")) out.push({ t: "h3", text: l.slice(4) });
     else if (l.startsWith("## ")) out.push({ t: "h2", text: l.slice(3) });
     else if (l.startsWith("# ")) out.push({ t: "h1", text: l.slice(2) });
@@ -2326,6 +2330,7 @@ function blocksHtml(blocks) {
     if (b.t === "h3") return `<h3 dir="auto">${inlineHtml(b.text, false)}</h3>`;
     if (b.t === "center") return `<p class="c" dir="auto">${inlineHtml(b.text, false)}</p>`;
     if (b.t === "hr") return "<hr>";
+    if (b.t === "qr") { const src = qrPng(b.data); return `<div class="qr" style="text-align:center;margin:10px 0">${src ? `<img src="${src}" alt="رمز الاستجابة السريعة" style="width:120px;height:120px">` : ""}</div>`; }
     if (b.t === "ul") return `<ul>${b.items.map((i) => `<li dir="auto">${inlineHtml(i)}</li>`).join("")}</ul>`;
     if (b.t === "ol") return `<ol>${b.items.map((i) => `<li dir="auto">${inlineHtml(i)}</li>`).join("")}</ol>`;
     if (b.t === "table") { const head = !b.plain && b.rows.length > 2; const ws = colWidths(b.rows, 100);
@@ -2375,6 +2380,7 @@ function docxParts(title, body, paperKey = "plain", paperImg = null) {
   const f = S.firm; let numId = 1; const nums = []; DOC_DIR = docDir(body);
   const pp = paperImg ? paperOf(paperKey) : null; const tw = (mm) => Math.round(mm * 56.693);
   const FONT = S.brand?.fonts?.length ? BRAND_WORD_FONT : null;
+  DOCX_MEDIA = [];
   const content = parseBlocks(body).map((b) => {
     if (b.t === "h1") return wP(b.text, { style: "Title" });
     if (b.t === "h2") return wP(b.text, { style: "Heading1" });
@@ -2384,6 +2390,8 @@ function docxParts(title, body, paperKey = "plain", paperImg = null) {
     if (b.t === "ul") return b.items.map((i) => wP(i, { style: "ListParagraph", num: 1 })).join("");
     if (b.t === "ol") { const id = ++numId; nums.push(id); return b.items.map((i) => wP(i, { style: "ListParagraph", num: id })).join(""); }
     if (b.t === "table") return wTbl(b);
+    if (b.t === "qr") { const png = qrPng(b.data); if (!png) return ""; const rid = "rIdQ" + DOCX_MEDIA.length; DOCX_MEDIA.push({ rid, name: `qr${DOCX_MEDIA.length}.png`, b64: png.split(",")[1] });
+      const e = 1188720; return `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${e}" cy="${e}"/><wp:docPr id="${20 + DOCX_MEDIA.length}" name="qr"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${20 + DOCX_MEDIA.length}" name="qr.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${e}" cy="${e}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`; }
     return wP(b.text);
   }).join("");
   const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
@@ -2431,14 +2439,16 @@ function docxParts(title, body, paperKey = "plain", paperImg = null) {
     "_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`,
     "docProps/core.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${X(title)}</dc:title><dc:creator>${X(f.nameAr)}</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString().slice(0, 19)}Z</dcterms:created></cp:coreProperties>`,
     "word/document.xml": doc, "word/styles.xml": styles, "word/numbering.xml": numbering, "word/settings.xml": settings, "word/header1.xml": header, "word/footer1.xml": footer,
-    "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdS" Type="${REL}/styles" Target="styles.xml"/><Relationship Id="rIdN" Type="${REL}/numbering" Target="numbering.xml"/><Relationship Id="rIdG" Type="${REL}/settings" Target="settings.xml"/><Relationship Id="rIdH" Type="${REL}/header" Target="header1.xml"/><Relationship Id="rIdF" Type="${REL}/footer" Target="footer1.xml"/></Relationships>`,
+    "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdS" Type="${REL}/styles" Target="styles.xml"/><Relationship Id="rIdN" Type="${REL}/numbering" Target="numbering.xml"/><Relationship Id="rIdG" Type="${REL}/settings" Target="settings.xml"/><Relationship Id="rIdH" Type="${REL}/header" Target="header1.xml"/><Relationship Id="rIdF" Type="${REL}/footer" Target="footer1.xml"/>${DOCX_MEDIA.map((m) => `<Relationship Id="${m.rid}" Type="${REL}/image" Target="media/${m.name}"/>`).join("")}</Relationships>`,
     "word/_rels/header1.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdT" Type="${REL}/image" Target="media/text.png"/><Relationship Id="rIdI" Type="${REL}/image" Target="media/icon.png"/>${pp ? `<Relationship Id="rIdP" Type="${REL}/image" Target="media/paper.jpg"/>` : ""}</Relationships>`,
   };
 }
 async function buildDocx(title, body, paperKey = "official") {
   await loadScript(JSZIP);
   const img = await paperData(paperKey);
+  if (/^@qr /m.test(body)) await ensureQr();
   const zip = new JSZip(); const parts = docxParts(title, body, paperKey, img);
+  for (const m of DOCX_MEDIA) zip.file("word/media/" + m.name, m.b64, { base64: true });
   if (img) zip.file("word/media/paper.jpg", img.split(",")[1], { base64: true });
   for (const [k, v] of Object.entries(parts)) zip.file(k, v);
   zip.file("word/media/text.png", LOGO.textLight.split(",")[1], { base64: true });
@@ -2492,6 +2502,7 @@ table.page > * > tr > td { padding: 0 ${pp.side}mm; } table.page > thead td { he
 <tbody><tr><td>${blocksHtml(parseBlocks(body))}</td></tr></tbody></table></body></html>`;
 }
 async function exportPdf(title, body, paperKey = "official") {
+  if (/^@qr /m.test(body)) await ensureQr();
   const img = await paperData(paperKey);
   document.getElementById("pdf-frame")?.remove();
   const fr = document.createElement("iframe");
@@ -3032,21 +3043,22 @@ VIEWS.doc = () => {
   const body = generating ? S.gen.text : (S.drafts["doc." + d.id] ?? d.body);
   const c = caseById(d.caseId);
   after.push(livePreview);
-  return `<div class="crumbs"><a data-act="go" data-r="${["agreement", "creview"].includes(d.kind) ? "contracts" : "drafting"}">${["agreement", "creview"].includes(d.kind) ? "العقود" : "الصياغة"}</a><span>/</span><span>${esc(DOC_KINDS[d.kind])}</span>${c ? `<span>/</span><a data-act="openCase" data-id="${c.id}">${esc(c.title)}</a>` : ""}</div>
+  return `<div class="crumbs"><a data-act="go" data-r="${["agreement", "creview"].includes(d.kind) ? "contracts" : d.kind === "invoice" ? "finance" : "drafting"}">${["agreement", "creview"].includes(d.kind) ? "العقود" : d.kind === "invoice" ? "المالية" : "الصياغة"}</a><span>/</span><span>${esc(DOC_KINDS[d.kind])}</span>${c ? `<span>/</span><a data-act="openCase" data-id="${c.id}">${esc(c.title)}</a>` : ""}</div>
   <div class="page-head"><div class="grow"><input id="doc-title" class="inp" dir="auto" style="font-family:var(--f-doc);font-size:21px;font-weight:700;border-color:transparent;padding-inline:0;background:transparent" value="${esc(d.title)}" data-draft="doct.${d.id}" aria-label="عنوان المستند"></div>
     <div class="row">${generating ? `<span class="thinking">يكتب المساعد…</span><button class="btn" data-act="stopGen">إيقاف</button>` : `
-      <button class="btn primary" data-act="saveDoc" data-id="${d.id}">${icon("check")}حفظ</button>
+      ${d.locked ? "" : `<button class="btn primary" data-act="saveDoc" data-id="${d.id}">${icon("check")}حفظ</button>`}
       <button class="btn" data-act="exportDocx" data-id="${d.id}">${icon("download")}Word</button>
       <button class="btn gold" data-act="exportPdf" data-id="${d.id}">${icon("download")}PDF</button>
       <button class="btn" data-act="sendDoc" data-id="${d.id}">${icon("send")}إرسال للعميل</button>
       ${d.kind === "agreement" && S.caps.sample ? `<button class="btn" data-act="reviewContract" data-doc="${d.id}">${icon("scale")}مراجعة وتحكيم</button><button class="btn" data-act="translateFrom" data-id="${d.id}">${icon("chat")}ترجمة</button>` : ""}
       ${d.kind === "creview" ? `<button class="btn" data-act="openReview" data-id="${d.id}">${icon("eye")}عرض التقرير التفاعلي</button>` : ""}
       <button class="btn" data-act="copyDoc">${icon("copy")}نسخ النص</button>
-      <button class="btn" data-act="aiEdit" data-id="${d.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}تعديل بالمساعد</button>
+      ${d.locked ? (d.subtype === "tax" ? `<button class="btn ghost" data-act="issueCredit" data-id="${d.finId}">${icon("x")}إشعار دائن</button>` : "") : `<button class="btn" data-act="aiEdit" data-id="${d.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}تعديل بالمساعد</button>
       <button class="btn ghost" data-act="toggleFinal" data-id="${d.id}">${d.status === "final" ? "إرجاع لمسودة" : "اعتماد كنهائي"}</button>
-      <button class="btn ghost danger" data-act="deleteDoc" data-id="${d.id}" aria-label="حذف">${icon("trash")}</button>`}</div></div>
+      <button class="btn ghost danger" data-act="deleteDoc" data-id="${d.id}" aria-label="حذف">${icon("trash")}</button>`}`}</div></div>
+  ${d.locked ? `<div class="banner gold"><div class="grow"><b>${d.subtype === "credit" ? "إشعار دائن صادر" : "فاتورة ضريبية صادرة"}</b> — لا يُعدَّل نصها ولا تُحذف. للتصحيح أصدر إشعارًا دائنًا. تحمل رمز الاستجابة السريعة المطلوب من هيئة الزكاة والضريبة والجمارك.</div></div>` : ""}
   <div class="editor"><div class="field"><label for="doc-body">النص <span class="muted">— # عنوان · ## قسم · 1. بند مرقم · - نقطة · | جدول | · !| توقيع | · > سطر في الوسط · **غامق**</span></label>
-      <textarea id="doc-body" class="inp" dir="auto" data-draft="doc.${d.id}" data-live="preview" ${generating ? "readonly" : ""}>${esc(body)}</textarea></div>
+      <textarea id="doc-body" class="inp" dir="auto" data-draft="doc.${d.id}" data-live="preview" ${generating || d.locked ? "readonly" : ""}>${esc(body)}</textarea></div>
     <div class="field"><div class="row" style="justify-content:space-between"><label for="doc-paper">المعاينة على ورق المكتب</label><select id="doc-paper" class="inp" style="width:auto;padding-block:4px" data-ch="docPaper" data-id="${d.id}">${Object.entries(PAPERS).map(([k, v]) => opt(k, v.label, d.paper || "official")).join("")}</select></div><div id="doc-checks"></div><div id="preview"></div></div></div>`;
 };
 function livePreview() {
@@ -3220,7 +3232,7 @@ const num = (v) => Number(String(v ?? "").replace(/[,٬\s]/g, "")) || 0;
 function invPaid(inv) { return fin("payment").filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + num(p.amount), 0); }
 function invState(inv) {
   if (inv.status === "void") return { k: "void", t: "ملغاة", c: "" };
-  const paid = invPaid(inv);
+  const paid = invPaid(inv) + (typeof credited === "function" ? credited(inv) : 0);
   if (paid >= num(inv.total) - 0.009) return { k: "paid", t: "مسددة", c: "ok" };
   if (inv.due && daysLeft(inv.due) < 0) return { k: "late", t: paid ? "متأخرة (جزئي)" : "متأخرة", c: "bad" };
   return paid ? { k: "partial", t: "مسددة جزئيًا", c: "warn" } : { k: "open", t: "غير مسددة", c: "info" };
@@ -3238,7 +3250,7 @@ function invRow(x) {
   const st = invState(x); const paid = invPaid(x);
   return `<tr><td class="primary-cell"><div class="t">${esc(x.desc || "مطالبة")}</div><div class="ref">${esc(x.no || "")} · ${fmtDate(x.date)}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td>
     <td data-label="الإجمالي" class="num">${money(x.total)}</td><td data-label="المسدد" class="num">${money(paid)}</td><td data-label="الاستحقاق" class="num">${x.due ? fmtDate(x.due) : "—"}</td><td data-label="الحالة">${pill(st.t, st.c)}</td>
-    <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${st.k !== "paid" && st.k !== "void" ? `<button class="btn sm" data-act="newPayment" data-inv="${x.id}">${icon("plus")}دفعة</button>` : ""}<button class="btn sm ghost" data-act="sendInvoice" data-id="${x.id}" title="إرسال للعميل (واتساب / بريد)${x.sentAt ? ` — أُرسلت ${fmtWhen(x.sentAt)}` : ""}">${icon("send")}</button><button class="btn sm ghost" data-act="invoiceDoc" data-id="${x.id}" title="مستند المطالبة">${icon("docs")}</button><button class="btn sm ghost" data-act="editFin" data-id="${x.id}" title="تعديل">${icon("edit")}</button></div></td></tr>`;
+    <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${st.k !== "paid" && st.k !== "void" ? `<button class="btn sm" data-act="newPayment" data-inv="${x.id}">${icon("plus")}دفعة</button>` : ""}${x.tax ? `<button class="btn sm" data-act="openTax" data-id="${x.id}" title="الفاتورة الضريبية ${esc(x.tax.no)}">${icon("receipt")}${esc(x.tax.no)}</button><button class="btn sm ghost" data-act="issueCredit" data-id="${x.id}" title="إشعار دائن">${icon("x")}</button>` : st.k !== "void" ? `<button class="btn sm gold" data-act="issueTax" data-id="${x.id}" title="إصدار فاتورة ضريبية">${icon("receipt")}ضريبية</button>` : ""}<button class="btn sm ghost" data-act="sendInvoice" data-id="${x.id}" title="إرسال للعميل (واتساب / بريد)${x.sentAt ? ` — أُرسلت ${fmtWhen(x.sentAt)}` : ""}">${icon("send")}</button><button class="btn sm ghost" data-act="invoiceDoc" data-id="${x.id}" title="مستند المطالبة">${icon("docs")}</button><button class="btn sm ghost" data-act="editFin" data-id="${x.id}" title="تعديل">${icon("edit")}</button></div></td></tr>`;
 }
 const invTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>المطالبة</th><th>العميل</th><th>الإجمالي</th><th>المسدد</th><th>الاستحقاق</th><th>الحالة</th><th></th></tr></thead><tbody>${rows.map(invRow).join("")}</tbody></table></div>` : "";
 const payTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الدفعة</th><th>العميل</th><th>المبلغ</th><th>الطريقة</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t">${fmtDate(x.date)}</div><div class="ref">${x.invoiceId ? esc(byId(S.data.finance, x.invoiceId)?.no || "") : "دفعة مقدمة"}${x.ref ? " · " + esc(x.ref) : ""}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td><td data-label="المبلغ" class="num">${money(x.amount)}</td><td data-label="الطريقة">${esc(x.method || "")}</td><td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${receiptBtn(x)}<button class="btn sm ghost" data-act="editFin" data-id="${x.id}">${icon("edit")}</button></div></td></tr>`).join("")}</tbody></table></div>` : "";
@@ -3258,7 +3270,7 @@ VIEWS.finance = () => {
     <div class="kpi attn"><span class="lbl">المستحق على العملاء</span><span class="val">${money(t.outstanding)}</span><span class="foot">مطالبات لم تُسدد</span></div>
     <div class="kpi ${t.late ? "alert" : ""}"><span class="lbl">متأخر السداد</span><span class="val">${money(t.late)}</span><span class="foot">المصروفات ${money(t.expenses)}</span></div></div>
   <div class="tabs">${[["invoices", "المطالبات", invs.length], ["payments", "المدفوعات", fin("payment").length], ["expenses", "المصروفات", fin("expense").length], ["receivables", "ذمم العملاء"], ["fees", "طلبات الأتعاب", S.data.fees.filter((f) => f.status === "pending").length], ["journal", "القيود", (S.data.journal || []).length], ["trial", "ميزان المراجعة"], ["statement", "كشف حساب عميل"]].map(([k, l, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${l}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>
-  ${FIN_TABS[tab] ? FIN_TABS[tab]() : tab === "invoices" ? invTable(invs) || `<div class="card">${emptyBox("receipt", "لا مطالبات بعد", "أنشئ مطالبة بأتعاب قضية أو استشارة، ثم سجّل دفعاتها.", `<button class="btn gold" data-act="newInvoice">${icon("receipt")}مطالبة جديدة</button>`)}</div>`
+  ${FIN_TABS[tab] ? FIN_TABS[tab]() : tab === "invoices" ? (invTable(invs) ? invTable(invs) + creditTable() : "") || `<div class="card">${emptyBox("receipt", "لا مطالبات بعد", "أنشئ مطالبة بأتعاب قضية أو استشارة، ثم سجّل دفعاتها.", `<button class="btn gold" data-act="newInvoice">${icon("receipt")}مطالبة جديدة</button>`)}</div>`
   : tab === "payments" ? payTable([...fin("payment")].sort((a, b) => (b.date || "").localeCompare(a.date || ""))) || `<div class="card">${emptyBox("coin", "لا مدفوعات مسجلة", "")}</div>`
   : tab === "expenses" ? expTable([...fin("expense")].sort((a, b) => (b.date || "").localeCompare(a.date || ""))) || `<div class="card">${emptyBox("coin", "لا مصروفات مسجلة", "")}</div>`
   : recv.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>العميل</th><th>المفوتر</th><th>المحصّل</th><th>المستحق</th><th>المتأخر</th></tr></thead><tbody>${recv.map(([cl, v]) => `<tr data-act="clientCases" data-id="${cl.id}"><td class="primary-cell"><div class="t">${esc(cl.name)}</div></td><td data-label="المفوتر" class="num">${money(v.invoiced)}</td><td data-label="المحصّل" class="num">${money(v.collected)}</td><td data-label="المستحق" class="num"><b>${money(v.outstanding)}</b></td><td data-label="المتأخر" class="num" style="color:${v.late ? "var(--bad)" : "inherit"}">${money(v.late)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="card">${emptyBox("clients", "لا ذمم بعد", "")}</div>`}`;
@@ -3346,6 +3358,7 @@ F.saveExpense = async (d) => {
 };
 A.editFin = (el) => {
   const x = byId(S.data.finance, el.dataset.id); if (!x) return; S.pmReceipt = null;
+  if (x.tax) return toast(`صدرت عنها فاتورة ضريبية (${x.tax.no}) فلا تُعدَّل؛ للتصحيح أصدر إشعارًا دائنًا.`, true);
   const [t, f, form] = x.type === "invoice" ? ["تعديل المطالبة", "fin-form", invoiceForm(x)] : x.type === "payment" ? ["تعديل الدفعة", "fin-form", paymentForm(x)] : ["تعديل المصروف", "fin-form", expenseForm(x)];
   modal(t, form, `<button class="btn primary" type="submit" form="${f}">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
 };
@@ -3573,6 +3586,10 @@ function linesFor(type, rec) {
     const total = r2(rec.total), net = r2(rec.amount), vat = r2(total - net);
     return [{ acc: "1200", dr: total, ...c }, { acc: rec.consultId ? "4200" : "4100", cr: net, ...c }, ...(vat ? [{ acc: "2100", cr: vat, ...c }] : [])];
   }
+  if (type === "credit") { // reverses the invoice: revenue and VAT down, receivable down
+    const total = r2(rec.total), net = r2(rec.amount), vat = r2(total - net);
+    return [{ acc: rec.consultId ? "4200" : "4100", dr: net, ...c }, ...(vat ? [{ acc: "2100", dr: vat, ...c }] : []), { acc: "1200", cr: total, ...c }];
+  }
   if (type === "payment") { const a = r2(rec.amount); return [{ acc: "1100", dr: a, ...c }, { acc: rec.invoiceId ? "1200" : "2200", cr: a, ...c }]; }
   if (type === "expense") { const a = r2(rec.amount); return rec.billable ? [{ acc: "1200", dr: a, ...c }, { acc: "1100", cr: a, ...c }] : [{ acc: "5100", dr: a, ...c }, { acc: "1100", cr: a, ...c }]; }
   return [];
@@ -3723,6 +3740,145 @@ F.rejectFee = async (d) => {
   if (f?.caseId) await logCase(f.caseId, "note", `رُفضت الأتعاب المقترحة (${money(f.amount)} ر.س): ${d.reason.trim()}`);
   closeModal(); toast("رُفضت الأتعاب المقترحة");
 };
+
+/* ============ Rakz — tax invoices and credit notes (ZATCA e-invoicing, generation phase) ============
+   A claim (مطالبة) becomes a tax invoice once a manager issues it: it takes the next sequential number, the issue
+   date and time, frozen seller/buyer data, and the QR code required by ZATCA (TLV: seller name, VAT number,
+   timestamp, total with VAT, VAT amount — base64). Standard invoice when the client is a VAT-registered business,
+   simplified otherwise. Issued invoices are immutable (database trigger guard_tax); corrections go through a
+   credit note that reverses the amounts and its journal entry. Integration with the Fatoora platform (phase two:
+   UBL XML, cryptographic stamp, reporting/clearance) needs the firm's onboarding with ZATCA and is not done here. */
+
+const QRLIB = "https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js";
+const VAT_RE = /^3\d{13}3$/;
+const vatOk = (v) => VAT_RE.test(String(v || "").replace(/\s/g, ""));
+
+/* ZATCA QR payload: tag–length–value, UTF-8, base64. */
+function zatcaTlv({ seller, vat, time, total, tax }) {
+  const enc = new TextEncoder(); const parts = [];
+  [seller, vat, time, Number(total).toFixed(2), Number(tax).toFixed(2)].forEach((v, i) => { const b = enc.encode(String(v)); parts.push(i + 1, b.length, ...b); });
+  let bin = ""; for (const x of parts) bin += String.fromCharCode(x); return btoa(bin);
+}
+/* QR image (PNG data URL) drawn on a canvas; "" until the QR library is loaded. */
+const QR_CACHE = {};
+function qrPng(data, size = 6) {
+  if (QR_CACHE[data]) return QR_CACHE[data];
+  if (!window.qrcode) { loadScript(QRLIB).then(() => { if (typeof livePreview === "function") livePreview(); }).catch(() => {}); return ""; }
+  const qr = window.qrcode(0, "M"); qr.addData(data); qr.make();
+  const n = qr.getModuleCount(), q = 4, cv = document.createElement("canvas"); cv.width = cv.height = (n + q * 2) * size;
+  const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.fillStyle = "#000";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) g.fillRect((c + q) * size, (r + q) * size, size, size);
+  return (QR_CACHE[data] = cv.toDataURL("image/png"));
+}
+const ensureQr = () => (window.qrcode ? Promise.resolve() : loadScript(QRLIB));
+
+function taxSeq(prefix) { const y = new Date().getFullYear(); const n = S.data.finance.filter((f) => (f.tax?.no || "").startsWith(`${prefix}-${y}-`)).length + 1; return `${prefix}-${y}-${String(n).padStart(5, "0")}`; }
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString("ar-SA-u-nu-latn", { hour: "2-digit", minute: "2-digit", hour12: false });
+
+function taxMarkup(rec, credit = false) {
+  const t = rec.tax; const s = t.seller, b = t.buyer; const std = t.kind === "standard";
+  const head = credit ? (std ? "إشعار دائن ضريبي" : "إشعار دائن ضريبي مبسط") : std ? "فاتورة ضريبية" : "فاتورة ضريبية مبسطة";
+  const en = credit ? "Tax Credit Note" : std ? "Tax Invoice" : "Simplified Tax Invoice";
+  const L = t.lines.map((l) => `| ${l.desc} | ${l.qty} | ${money(l.unit)} | ${money(l.net)} | ${l.rate}% | ${money(l.vat)} | ${money(l.total)} |`).join("\n");
+  return `# ${head} — ${en}
+| البيان | التفاصيل |
+| رقم ${credit ? "الإشعار" : "الفاتورة"} | ${t.no} |
+| تاريخ الإصدار | ${fmtDate(t.issuedAt.slice(0, 10))} الموافق ${fmtHijri(t.issuedAt.slice(0, 10))} — الساعة ${fmtTime(t.issuedAt)} |${credit ? `\n| الفاتورة الأصلية | ${t.ref} بتاريخ ${fmtDate(t.refDate)} |\n| سبب الإشعار | ${t.reason} |` : ""}${rec.caseId && caseById(rec.caseId) ? `\n| المرجع | ${caseById(rec.caseId).title} |` : ""}
+## البائع
+| البيان | التفاصيل |
+| الاسم | ${s.name} |
+| الرقم الضريبي | ${s.vat} |
+| السجل التجاري | ${s.cr || "—"} |
+| العنوان | ${s.address || "—"} |
+## المشتري
+| البيان | التفاصيل |
+| الاسم | ${b.name} |${std ? `\n| الرقم الضريبي | ${b.vat} |` : ""}${b.idNo ? `\n| ${b.kind === "company" ? "السجل التجاري" : "رقم الهوية"} | ${b.idNo} |` : ""}${b.address ? `\n| العنوان | ${b.address} |` : ""}
+## التفاصيل
+| البيان | الكمية | سعر الوحدة | المبلغ الخاضع للضريبة | نسبة الضريبة | مبلغ الضريبة | الإجمالي شامل الضريبة |
+${L}
+## الإجمالي
+| البيان | المبلغ (ر.س) |
+| الإجمالي غير شامل ضريبة القيمة المضافة | ${money(t.net)} |
+| مجموع ضريبة القيمة المضافة | ${money(t.vat)} |
+| ${credit ? "إجمالي الإشعار" : "الإجمالي المستحق"} شامل الضريبة | ${money(t.total)} |
+@qr ${t.qr}
+> ${credit ? "يخفض هذا الإشعار المبلغ المستحق في الفاتورة الأصلية بقيمته." : s.iban ? `السداد بالتحويل إلى حساب ${s.name} — الآيبان: ${s.iban}` : "شكرًا لتعاملكم معنا."}`;
+}
+function sellerSnap() { const f = S.firm; return { name: f.nameAr, vat: String(f.vat || "").replace(/\s/g, ""), cr: f.cr || "", address: f.address || f.city || "", iban: f.iban || "" }; }
+function buyerSnap(cl) { return { name: cl.name || "", vat: String(cl.vatNo || "").replace(/\s/g, ""), idNo: cl.idNo || "", kind: cl.kind || "individual", address: cl.address || "" }; }
+
+/* ---------- issue a tax invoice from a claim ---------- */
+A.issueTax = (el) => {
+  if (!isManager()) return toast("إصدار الفواتير من صلاحية المدير.", true);
+  const x = byId(S.data.finance, el.dataset.id); if (!x || x.tax) return;
+  const cl = byId(S.data.clients, x.clientId) || {};
+  if (!vatOk(S.firm.vat)) return confirmBox("الرقم الضريبي للمكتب مطلوب", "لا تُصدر فاتورة ضريبية دون رقم ضريبي صحيح للمكتب (15 رقمًا يبدأ وينتهي بالرقم 3). أضفه في الإعدادات ← بيانات المكتب.", "فتح الإعدادات", () => go("settings"));
+  if (!S.firm.address) return toast("أضف عنوان المكتب في الإعدادات أولًا.", true);
+  const std = cl.kind === "company" && vatOk(cl.vatNo);
+  modal("إصدار فاتورة ضريبية", `<div class="stack" style="gap:12px">
+    <div class="banner ${std ? "" : "gold"}"><div class="grow"><b>${std ? "فاتورة ضريبية (قياسية)" : "فاتورة ضريبية مبسطة"}</b><div class="small">${std ? "العميل منشأة مسجلة في ضريبة القيمة المضافة، فتصدر فاتورة قياسية بالرقم الضريبي للمشتري." : cl.kind === "company" ? "العميل منشأة دون رقم ضريبي مسجل لديه، فتصدر مبسطة. لإصدار قياسية أضف رقمه الضريبي في بيانات العميل." : "العميل فرد، فتصدر فاتورة مبسطة."}</div></div></div>
+    <div class="facts"><div class="fact"><div class="k">الرقم</div><div class="v num">${taxSeq("RK-TI")}</div></div><div class="fact"><div class="k">المشتري</div><div class="v">${esc(cl.name || "—")}</div></div>
+      <div class="fact"><div class="k">غير شامل الضريبة</div><div class="v num">${money(x.amount)}</div></div><div class="fact"><div class="k">الضريبة (${x.vat || 0}%)</div><div class="v num">${money(x.vatAmount || 0)}</div></div><div class="fact"><div class="k">الإجمالي</div><div class="v num"><b>${money(x.total)}</b></div></div></div>
+    <p class="small muted" style="margin:0">بعد الإصدار لا تُعدَّل الفاتورة ولا تُحذف، والتصحيح يكون بإشعار دائن. يُسجَّل تاريخ الإصدار ووقته الآن ويُولَّد رمز الاستجابة السريعة المطلوب من هيئة الزكاة والضريبة والجمارك.</p></div>`,
+    `<button class="btn gold" data-act="issueTaxGo" data-id="${x.id}">${icon("receipt")}إصدار الفاتورة</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
+};
+A.issueTaxGo = async (el) => {
+  const x = byId(S.data.finance, el.dataset.id); if (!x || x.tax) return closeModal();
+  el.disabled = true;
+  try {
+    await ensureQr();
+    const cl = byId(S.data.clients, x.clientId) || {}; const std = cl.kind === "company" && vatOk(cl.vatNo);
+    const net = r2(x.amount), vat = r2(x.vatAmount || 0), total = r2(x.total); const rate = Number(x.vat) || 0;
+    const issuedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    const seller = sellerSnap(); const no = taxSeq("RK-TI");
+    const tax = { no, kind: std ? "standard" : "simplified", issuedAt, uuid: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), seller, buyer: buyerSnap(cl), net, vat, total,
+      lines: [{ desc: x.desc || "أتعاب خدمات قانونية", qty: 1, unit: net, net, rate, vat, total }], qr: zatcaTlv({ seller: seller.name, vat: seller.vat, time: issuedAt, total, tax: vat }) };
+    await upd(`finance/${x.id}`, { tax });
+    const rec = { ...x, tax };
+    const id = await add("docs", { kind: "invoice", subtype: "tax", locked: true, finId: x.id, title: `${std ? "فاتورة ضريبية" : "فاتورة ضريبية مبسطة"} ${no} — ${cl.name || ""}`, caseId: x.caseId || "", clientId: x.clientId || "", body: taxMarkup(rec), status: "final", paper: "official", updatedAt: nowIso() });
+    if (x.caseId) await logCase(x.caseId, "note", `صدرت فاتورة ضريبية ${no} بمبلغ ${money(total)} ر.س`);
+    closeModal(); toast(`صدرت الفاتورة ${no}`); go("doc", id);
+  } catch (e) { el.disabled = false; if (!/tax_invoice_immutable/.test(e?.message || "")) { console.error(e); toast("تعذّر إصدار الفاتورة: " + (e.message || ""), true); } }
+};
+A.openTax = (el) => { const d = S.data.docs.find((x) => x.finId === el.dataset.id && (x.subtype === "tax" || x.subtype === "credit")); if (d) go("doc", d.id); else toast("مستند الفاتورة غير موجود؛ أعد توليده من «إعادة إنشاء المستند».", true); };
+A.regenTax = async (el) => {
+  const x = byId(S.data.finance, el.dataset.id); if (!x?.tax) return;
+  const credit = x.type === "credit"; const cl = byId(S.data.clients, x.clientId) || {};
+  const id = await add("docs", { kind: "invoice", subtype: credit ? "credit" : "tax", locked: true, finId: x.id, title: `${credit ? "إشعار دائن" : "فاتورة ضريبية"} ${x.tax.no} — ${cl.name || ""}`, caseId: x.caseId || "", clientId: x.clientId || "", body: taxMarkup(x, credit), status: "final", paper: "official", updatedAt: nowIso() });
+  go("doc", id);
+};
+
+/* ---------- credit note ---------- */
+const credited = (inv) => r2(S.data.finance.filter((f) => f.type === "credit" && f.invoiceId === inv.id).reduce((s, f) => s + num(f.total), 0));
+A.issueCredit = (el) => {
+  const x = byId(S.data.finance, el.dataset.id); if (!x?.tax) return;
+  const max = r2(num(x.total) - credited(x));
+  if (max <= 0) return toast("رُدّت قيمة هذه الفاتورة كاملة بإشعارات سابقة.", true);
+  modal(`إشعار دائن على الفاتورة ${x.tax.no}`, `<form id="cn-form" data-form="issueCredit" class="grid2"><input type="hidden" name="id" value="${x.id}">
+    <div class="field"><label for="cn-amt" class="req">قيمة الإشعار شاملة الضريبة (ر.س)</label><input id="cn-amt" class="inp num" name="total" inputmode="decimal" required value="${max}"><span class="hint">الحد الأقصى ${money(max)}</span></div>
+    <div class="field"><label for="cn-why" class="req">سبب الإشعار</label><select id="cn-why" class="inp" name="reason">${["إلغاء الخدمة أو جزء منها", "خصم لاحق متفق عليه", "تصحيح خطأ في الفاتورة", "إعادة مبلغ للعميل"].map((r) => opt(r, r, "")).join("")}</select></div>
+    <p class="small muted span2" style="margin:0">يصدر إشعار دائن ضريبي برقم مستقل ورمز استجابة سريعة، ويُرحَّل قيد عكسي للإيراد والضريبة وذمة العميل. الفاتورة الأصلية لا تتغير.</p></form>`,
+    `<button class="btn gold" type="submit" form="cn-form">${icon("receipt")}إصدار الإشعار</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
+};
+F.issueCredit = async (d) => {
+  const x = byId(S.data.finance, d.id); if (!x?.tax) return;
+  const max = r2(num(x.total) - credited(x)); const total = r2(Math.min(num(d.total), max)); if (total <= 0) return toast("أدخل مبلغًا صحيحًا.", true);
+  try {
+    await ensureQr();
+    const rate = Number(x.vat) || 0; const net = r2(total / (1 + rate / 100)); const vat = r2(total - net);
+    const issuedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z"); const seller = sellerSnap(); const no = taxSeq("RK-CN");
+    const tax = { no, kind: x.tax.kind, issuedAt, ref: x.tax.no, refDate: x.tax.issuedAt.slice(0, 10), reason: d.reason, seller, buyer: x.tax.buyer, net, vat, total,
+      lines: [{ desc: `${d.reason} — الفاتورة ${x.tax.no}`, qty: 1, unit: net, net, rate, vat, total }], qr: zatcaTlv({ seller: seller.name, vat: seller.vat, time: issuedAt, total, tax: vat }) };
+    const rec = { type: "credit", invoiceId: x.id, clientId: x.clientId, caseId: x.caseId || "", consultId: x.consultId || "", desc: d.reason, amount: net, vat: x.vat, vatAmount: vat, total, date: todayStr(), tax };
+    const fid = await add("finance", rec);
+    await syncJournal("credit", fid, rec, `إشعار دائن ${no} على الفاتورة ${x.tax.no} — ${clientName(x.clientId)}`);
+    const id = await add("docs", { kind: "invoice", subtype: "credit", locked: true, finId: fid, title: `إشعار دائن ${no} — ${clientName(x.clientId)}`, caseId: x.caseId || "", clientId: x.clientId || "", body: taxMarkup(rec, true), status: "final", paper: "official", updatedAt: nowIso() });
+    if (x.caseId) await logCase(x.caseId, "note", `صدر إشعار دائن ${no} بمبلغ ${money(total)} ر.س على الفاتورة ${x.tax.no}`);
+    closeModal(); toast(`صدر الإشعار ${no}`); go("doc", id);
+  } catch (e) { console.error(e); toast("تعذّر إصدار الإشعار: " + (e.message || ""), true); }
+};
+const creditTable = () => { const rows = S.data.finance.filter((f) => f.type === "credit").sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  return rows.length ? `<div class="card"><div class="card-h"><h3>الإشعارات الدائنة</h3><span class="sub num">${rows.length}</span></div><div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الإشعار</th><th>العميل</th><th>المبلغ</th><th>السبب</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t num">${esc(x.tax?.no || "")}</div><div class="ref">على ${esc(byId(S.data.finance, x.invoiceId)?.tax?.no || "")} · ${fmtDate(x.date)}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td><td data-label="المبلغ" class="num">${money(x.total)}</td><td data-label="السبب">${esc(x.desc || "")}</td><td data-noact="1"><button class="btn sm ghost" data-act="openTax" data-id="${x.id}">${icon("docs")}</button></td></tr>`).join("")}</tbody></table></div></div>` : ""; };
 
 /* ============ Rakz — sending to clients (WhatsApp / email / share), payment receipts, consultation documents ============ */
 

@@ -401,6 +401,7 @@ function clientErrors(d) {
   const ph = String(d.phone || "").replace(/[\s-]/g, "");
   if (ph && !/^(05\d{8}|\+?9665\d{8})$/.test(ph)) e.push("الجوال بصيغة 05xxxxxxxx");
   if (d.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) e.push("البريد الإلكتروني غير صحيح");
+  if (d.vatNo && !/^3\d{13}3$/.test(d.vatNo)) e.push("الرقم الضريبي 15 رقمًا يبدأ وينتهي بالرقم 3");
   return e;
 }
 const clientComplete = (c) => !!c && clientErrors(c).length === 0;
@@ -413,10 +414,11 @@ function clientFields(c = {}, p = "") {
     ${f("rep", "الممثل النظامي (للمنشآت)", false)}
     ${f("phone", "الجوال", true, 'inputmode="tel" placeholder="05xxxxxxxx"')}
     ${f("email", "البريد الإلكتروني", false, 'type="email"')}
+    ${f("vatNo", "الرقم الضريبي (للمنشآت المسجلة)", false, 'inputmode="numeric" maxlength="15" placeholder="15 رقمًا يبدأ وينتهي بـ 3"')}
     ${f("address", "العنوان الوطني", true, 'placeholder="المدينة – الحي – الشارع – الرمز البريدي"')}
   </div>`;
 }
-const pickClient = (d, p) => ({ name: (d[p + "name"] || "").trim(), kind: d[p + "kind"] || "individual", idNo: (d[p + "idNo"] || "").replace(/\s/g, ""), rep: (d[p + "rep"] || "").trim(), phone: (d[p + "phone"] || "").replace(/[\s-]/g, ""), email: (d[p + "email"] || "").trim(), address: (d[p + "address"] || "").trim() });
+const pickClient = (d, p) => ({ name: (d[p + "name"] || "").trim(), kind: d[p + "kind"] || "individual", idNo: (d[p + "idNo"] || "").replace(/\s/g, ""), rep: (d[p + "rep"] || "").trim(), phone: (d[p + "phone"] || "").replace(/[\s-]/g, ""), email: (d[p + "email"] || "").trim(), vatNo: (d[p + "vatNo"] || "").replace(/\s/g, ""), address: (d[p + "address"] || "").trim() });
 VIEWS.clients = () => `<div class="page-head"><div><h1>العملاء</h1><p>${S.data.clients.length} عميل</p></div><button class="btn gold" data-act="newClient">${icon("plus")}عميل جديد</button></div>
   ${S.data.clients.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الاسم</th><th>النوع</th><th>الهوية / السجل</th><th>الجوال</th><th>البريد</th><th>القضايا</th><th></th></tr></thead><tbody>
   ${[...S.data.clients].sort((a, b) => a.name.localeCompare(b.name, "ar")).map((c) => `<tr data-act="clientCases" data-id="${c.id}"><td class="t primary-cell">${esc(c.name)}${clientComplete(c) ? "" : ` <span class="pill warn">بيانات ناقصة</span>`}</td><td>${c.kind === "company" ? "منشأة" : "فرد"}</td><td class="num">${esc(c.idNo || "—")}</td><td class="num">${esc(c.phone || "—")}</td><td>${esc(c.email || "—")}</td><td class="num">${S.data.cases.filter((x) => x.clientId === c.id).length}</td>

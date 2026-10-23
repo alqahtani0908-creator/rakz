@@ -28,6 +28,10 @@ function linesFor(type, rec) {
     const total = r2(rec.total), net = r2(rec.amount), vat = r2(total - net);
     return [{ acc: "1200", dr: total, ...c }, { acc: rec.consultId ? "4200" : "4100", cr: net, ...c }, ...(vat ? [{ acc: "2100", cr: vat, ...c }] : [])];
   }
+  if (type === "credit") { // reverses the invoice: revenue and VAT down, receivable down
+    const total = r2(rec.total), net = r2(rec.amount), vat = r2(total - net);
+    return [{ acc: rec.consultId ? "4200" : "4100", dr: net, ...c }, ...(vat ? [{ acc: "2100", dr: vat, ...c }] : []), { acc: "1200", cr: total, ...c }];
+  }
   if (type === "payment") { const a = r2(rec.amount); return [{ acc: "1100", dr: a, ...c }, { acc: rec.invoiceId ? "1200" : "2200", cr: a, ...c }]; }
   if (type === "expense") { const a = r2(rec.amount); return rec.billable ? [{ acc: "1200", dr: a, ...c }, { acc: "1100", cr: a, ...c }] : [{ acc: "5100", dr: a, ...c }, { acc: "1100", cr: a, ...c }]; }
   return [];

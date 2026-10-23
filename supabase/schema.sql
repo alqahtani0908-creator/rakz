@@ -106,3 +106,24 @@ create policy "members upload files" on storage.objects for insert to authentica
   with check (bucket_id = 'files' and public.is_member() and (name not like 'finance/%' or public.is_manager()));
 create policy "members delete files" on storage.objects for delete to authenticated
   using (bucket_id = 'files' and public.is_member() and (name not like 'finance/%' or public.is_manager()));
+
+-- ---------- 2026-10-23: issued tax invoices and credit notes are immutable ----------
+create or replace function public.guard_tax()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+begin
+  if tg_op = 'DELETE' then
+    if old.collection = 'finance' and old.data ? 'tax' and auth.uid() is not null then raise exception 'tax_invoice_immutable'; end if;
+    return old;
+  end if;
+  if new.collection <> 'finance' or tg_op <> 'UPDATE' or not (old.data ? 'tax') then return new; end if;
+  if (new.data->'tax') is distinct from (old.data->'tax') or (new.data->'amount') is distinct from (old.data->'amount')
+     or (new.data->'total') is distinct from (old.data->'total') or (new.data->'vat') is distinct from (old.data->'vat')
+     or (new.data->'vatAmount') is distinct from (old.data->'vatAmount') or (new.data->'clientId') is distinct from (old.data->'clientId')
+     or (new.data->'desc') is distinct from (old.data->'desc') or coalesce(new.data->>'status','') = 'void' then
+    raise exception 'tax_invoice_immutable';
+  end if;
+  return new;
+end; $$;
+drop trigger if exists guard_tax on public.documents;
+create trigger guard_tax before update or delete on public.documents for each row execute function public.guard_tax();
+revoke all on function public.guard_tax() from public, anon, authenticated;

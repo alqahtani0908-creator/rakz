@@ -18,6 +18,7 @@ const scriptCounts = (t) => { const s = String(t || "").replace(/\[[^\]]*\]|\*\*
 const isLatin = (t) => { const c = scriptCounts(t); return c.la > c.ar; };
 const docDir = (body) => { const c = scriptCounts(body); return c.la > c.ar * 1.5 ? "ltr" : "rtl"; };
 let DOC_DIR = "rtl"; // set while building a .docx
+let DOCX_MEDIA = []; // images collected while building a .docx (QR codes)
 
 function parseBlocks(text) {
   const lines = String(text || "").replace(/\r/g, "").split("\n"); const out = []; let cur = null;
@@ -31,6 +32,7 @@ function parseBlocks(text) {
     close();
     if (!l) continue;
     if (/^-{3,}$|^_{3,}$/.test(l)) out.push({ t: "hr" });
+    else if (l.startsWith("@qr ")) out.push({ t: "qr", data: l.slice(4).trim() });
     else if (l.startsWith("### ")) out.push({ t: "h3", text: l.slice(4) });
     else if (l.startsWith("## ")) out.push({ t: "h2", text: l.slice(3) });
     else if (l.startsWith("# ")) out.push({ t: "h1", text: l.slice(2) });
@@ -67,6 +69,7 @@ function blocksHtml(blocks) {
     if (b.t === "h3") return `<h3 dir="auto">${inlineHtml(b.text, false)}</h3>`;
     if (b.t === "center") return `<p class="c" dir="auto">${inlineHtml(b.text, false)}</p>`;
     if (b.t === "hr") return "<hr>";
+    if (b.t === "qr") { const src = qrPng(b.data); return `<div class="qr" style="text-align:center;margin:10px 0">${src ? `<img src="${src}" alt="رمز الاستجابة السريعة" style="width:120px;height:120px">` : ""}</div>`; }
     if (b.t === "ul") return `<ul>${b.items.map((i) => `<li dir="auto">${inlineHtml(i)}</li>`).join("")}</ul>`;
     if (b.t === "ol") return `<ol>${b.items.map((i) => `<li dir="auto">${inlineHtml(i)}</li>`).join("")}</ol>`;
     if (b.t === "table") { const head = !b.plain && b.rows.length > 2; const ws = colWidths(b.rows, 100);
@@ -116,6 +119,7 @@ function docxParts(title, body, paperKey = "plain", paperImg = null) {
   const f = S.firm; let numId = 1; const nums = []; DOC_DIR = docDir(body);
   const pp = paperImg ? paperOf(paperKey) : null; const tw = (mm) => Math.round(mm * 56.693);
   const FONT = S.brand?.fonts?.length ? BRAND_WORD_FONT : null;
+  DOCX_MEDIA = [];
   const content = parseBlocks(body).map((b) => {
     if (b.t === "h1") return wP(b.text, { style: "Title" });
     if (b.t === "h2") return wP(b.text, { style: "Heading1" });
@@ -125,6 +129,8 @@ function docxParts(title, body, paperKey = "plain", paperImg = null) {
     if (b.t === "ul") return b.items.map((i) => wP(i, { style: "ListParagraph", num: 1 })).join("");
     if (b.t === "ol") { const id = ++numId; nums.push(id); return b.items.map((i) => wP(i, { style: "ListParagraph", num: id })).join(""); }
     if (b.t === "table") return wTbl(b);
+    if (b.t === "qr") { const png = qrPng(b.data); if (!png) return ""; const rid = "rIdQ" + DOCX_MEDIA.length; DOCX_MEDIA.push({ rid, name: `qr${DOCX_MEDIA.length}.png`, b64: png.split(",")[1] });
+      const e = 1188720; return `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${e}" cy="${e}"/><wp:docPr id="${20 + DOCX_MEDIA.length}" name="qr"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${20 + DOCX_MEDIA.length}" name="qr.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${e}" cy="${e}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`; }
     return wP(b.text);
   }).join("");
   const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
@@ -172,14 +178,16 @@ function docxParts(title, body, paperKey = "plain", paperImg = null) {
     "_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`,
     "docProps/core.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${X(title)}</dc:title><dc:creator>${X(f.nameAr)}</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString().slice(0, 19)}Z</dcterms:created></cp:coreProperties>`,
     "word/document.xml": doc, "word/styles.xml": styles, "word/numbering.xml": numbering, "word/settings.xml": settings, "word/header1.xml": header, "word/footer1.xml": footer,
-    "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdS" Type="${REL}/styles" Target="styles.xml"/><Relationship Id="rIdN" Type="${REL}/numbering" Target="numbering.xml"/><Relationship Id="rIdG" Type="${REL}/settings" Target="settings.xml"/><Relationship Id="rIdH" Type="${REL}/header" Target="header1.xml"/><Relationship Id="rIdF" Type="${REL}/footer" Target="footer1.xml"/></Relationships>`,
+    "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdS" Type="${REL}/styles" Target="styles.xml"/><Relationship Id="rIdN" Type="${REL}/numbering" Target="numbering.xml"/><Relationship Id="rIdG" Type="${REL}/settings" Target="settings.xml"/><Relationship Id="rIdH" Type="${REL}/header" Target="header1.xml"/><Relationship Id="rIdF" Type="${REL}/footer" Target="footer1.xml"/>${DOCX_MEDIA.map((m) => `<Relationship Id="${m.rid}" Type="${REL}/image" Target="media/${m.name}"/>`).join("")}</Relationships>`,
     "word/_rels/header1.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdT" Type="${REL}/image" Target="media/text.png"/><Relationship Id="rIdI" Type="${REL}/image" Target="media/icon.png"/>${pp ? `<Relationship Id="rIdP" Type="${REL}/image" Target="media/paper.jpg"/>` : ""}</Relationships>`,
   };
 }
 async function buildDocx(title, body, paperKey = "official") {
   await loadScript(JSZIP);
   const img = await paperData(paperKey);
+  if (/^@qr /m.test(body)) await ensureQr();
   const zip = new JSZip(); const parts = docxParts(title, body, paperKey, img);
+  for (const m of DOCX_MEDIA) zip.file("word/media/" + m.name, m.b64, { base64: true });
   if (img) zip.file("word/media/paper.jpg", img.split(",")[1], { base64: true });
   for (const [k, v] of Object.entries(parts)) zip.file(k, v);
   zip.file("word/media/text.png", LOGO.textLight.split(",")[1], { base64: true });
@@ -233,6 +241,7 @@ table.page > * > tr > td { padding: 0 ${pp.side}mm; } table.page > thead td { he
 <tbody><tr><td>${blocksHtml(parseBlocks(body))}</td></tr></tbody></table></body></html>`;
 }
 async function exportPdf(title, body, paperKey = "official") {
+  if (/^@qr /m.test(body)) await ensureQr();
   const img = await paperData(paperKey);
   document.getElementById("pdf-frame")?.remove();
   const fr = document.createElement("iframe");
