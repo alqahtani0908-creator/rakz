@@ -24,7 +24,7 @@ VIEWS.chat = () => {
       <div class="chat-log" id="chat-log">
         ${msgs.length ? msgs.map(chatMsg).join("") : `<div class="chat-hello"><span class="law-ic">${icon("bot")}</span><h2>كيف أستطيع مساعدتك؟</h2><p class="muted" style="margin:0">أجيب من ${S.lawList ? S.lawList.length + " نظامًا ولائحة" : "المكتبة النظامية"} بنصوصها الرسمية، وأذكر النظام والمادة لكل جواب.</p>
           <div class="chat-sugg">${CHAT_SUGGEST.map((q) => `<button class="chip" data-act="chatSuggest" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>`}
-        ${busy ? `<div class="msg me"><div class="bubble">${esc(busy.q)}</div></div><div class="msg ai"><div class="bubble" id="chat-stream">${busy.text ? esc(busy.text) : `<span class="thinking">يبحث في المكتبة…</span>`}</div></div>` : ""}
+        ${busy ? `<div class="msg me"><div class="bubble">${esc(busy.q)}</div></div><div class="msg ai"><div class="bubble" id="chat-stream">${busy.text ? esc(busy.text) : `<span class="thinking">${esc(busy.stage || "يحلل السؤال…")}</span>`}</div></div>` : ""}
       </div>
       <form class="chat-input" data-form="chatAsk"><textarea class="inp" name="q" id="chat-q" rows="1" placeholder="اكتب سؤالك… (Enter للإرسال، Shift+Enter لسطر جديد)" ${busy ? "disabled" : ""}></textarea>
         ${busy ? `<button class="btn" type="button" data-act="chatStop">إيقاف</button>` : `<button class="btn primary" type="submit" ${S.caps.sample ? "" : "disabled"}>${icon("send")}إرسال</button>`}</form>
@@ -32,7 +32,15 @@ VIEWS.chat = () => {
 };
 function chatMsg(m, i) {
   if (m.role === "user") return `<div class="msg me"><div class="bubble">${esc(m.text)}</div></div>`;
-  return `<div class="msg ai"><div class="bubble">${esc(m.text)}</div>${(m.refs || []).length ? `<div class="refs">${m.refs.map((r, j) => `<button class="chip" data-act="chatRef" data-m="${i}" data-r="${j}">${icon("book")} ${esc(r.law)} — ${esc(r.article)}</button>`).join("")}</div>` : ""}</div>`;
+  const refs = m.refs || [];
+  // [n] in the answer becomes a clickable citation that opens the exact text it rests on.
+  const body = esc(m.text).replace(/\[(\d{1,2})\]/g, (all, n) => { const j = refs.findIndex((r) => r.n === +n); return j < 0 ? "" : `<button class="cite" data-act="chatRef" data-m="${i}" data-r="${j}" title="${esc(refs[j].law)} — ${esc(refs[j].article)}">${n}</button>`; });
+  const cited = refs.filter((r) => r.cited !== false);
+  return `<div class="msg ai">${m.plan?.intent ? `<div class="plan small muted">${icon("search")} فهمتُ السؤال: ${esc(m.plan.intent)}${m.plan.laws?.length ? ` · بحثتُ في: ${esc(m.plan.laws.join("، "))}` : ""}</div>` : ""}
+    <div class="bubble">${body}</div>
+    ${(m.options || []).length ? `<div class="chat-sugg" style="justify-content:flex-end">${m.options.map((o) => `<button class="chip" data-act="chatSuggest" data-q="${esc(o)}">${esc(o)}</button>`).join("")}</div>` : ""}
+    ${cited.length ? `<div class="refs">${cited.map((r) => `<button class="chip" data-act="chatRef" data-m="${i}" data-r="${refs.indexOf(r)}">${r.n ? `<b class="num">${r.n}</b> ` : ""}${esc(r.law)} — ${esc(r.article)}</button>`).join("")}</div>` : ""}
+    ${m.unverified ? `<div class="small" style="color:var(--warn)">${icon("flag")} وردت في الجواب إحالة لم أجدها في نصوص المكتبة؛ تحقّق منها قبل الاعتماد.</div>` : ""}</div>`;
 }
 after.push(() => { const log = $("#chat-log"); if (log && S.route.name === "chat") log.scrollTop = log.scrollHeight; });
 document.addEventListener("keydown", (e) => { if (e.target?.id === "chat-q" && e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.target.form?.requestSubmit(); } });
@@ -50,39 +58,87 @@ A.chatRef = (el) => {
 };
 A.chatOpenLaw = (el) => { closeModal(); const l = (S.lawList || []).find((x) => x.slug === el.dataset.id); S.lawFam = l?.parent || el.dataset.id; S.lawTab = l?.parent ? "regs" : "text"; S.lawText = null; go("laws"); };
 
+/* Stage 1 — understand the question: restate it precisely, pick the laws it falls under, and write search phrases
+   in the statutes' own vocabulary. Asks back only when the answer would differ materially and cannot cover both. */
+async function chatPlan(q, history, signal) {
+  const list = S.lawList || []; const mains = list.filter((l) => !l.parent);
+  const catalogue = mains.map((l) => `${l.slug} | ${l.name}`).join("\n");
+  const prev = history.slice(-4).map((m) => `${m.role === "user" ? "المحامي" : "المساعد"}: ${String(m.text).slice(0, 600)}`).join("\n");
+  const prompt = `أنت محلل أسئلة نظامية في مكتب محاماة سعودي. مهمتك فهم السؤال بدقة قبل البحث في المكتبة النظامية، لا الإجابة عنه.
+${prev ? `سياق المحادثة السابقة:\n${prev}\n` : ""}السؤال الحالي: ${q}
+${S.chatScope ? `نطاق السؤال محصور في: ${S.chatScope.name}` : ""}
+الأنظمة المتاحة في المكتبة (المعرّف | الاسم):
+${catalogue}
+
+أعد JSON فقط:
+{"intent":"إعادة صياغة السؤال بدقة في جملة واحدة، متضمنة المسألة النظامية والوقائع المؤثرة (مع إكمال الضمائر من السياق)","laws":["معرّفات 1-4 أنظمة من القائمة ينطبق عليها السؤال، الأقرب أولًا"],"queries":["3-6 عبارات بحث قصيرة بالمصطلحات النظامية كما ترد في نصوص الأنظمة (مثل: «مدة الاعتراض بطلب الاستئناف»، «مكافأة نهاية الخدمة»، «الشرط الجزائي التعويض»)، مع المرادفات"],"clarify":"سؤال توضيحي واحد قصير فقط إذا كان الجواب يختلف جوهريًا باختلاف معلومة ناقصة ولا يمكن تغطية الاحتمالين بإيجاز، وإلا فاتركه فارغًا","options":["2-4 خيارات قصيرة للسؤال التوضيحي إن وُجد"]}`;
+  try {
+    const r = await S.caps.sample.json(prompt, { signal, modelTier: "quick" });
+    const valid = new Set(list.map((l) => l.slug));
+    return { intent: String(r.intent || q).slice(0, 300), laws: (r.laws || []).filter((x) => valid.has(x)).slice(0, 4), queries: (r.queries || []).map(String).filter(Boolean).slice(0, 6), clarify: String(r.clarify || "").trim(), options: (r.options || []).map(String).filter(Boolean).slice(0, 4) };
+  } catch (e) { if (e?.code === "cancelled") throw e; return { intent: q, laws: [], queries: [q], clarify: "", options: [] }; }
+}
+/* Stage 2 — retrieve: every phrase across the library, plus inside each identified law (and its regulations);
+   texts found by several searches and inside the identified laws rank first. */
+async function chatRetrieve(q, plan) {
+  const L = LAWS(); const scope = S.chatScope?.slug || null; const hits = new Map();
+  const add = (rows, w) => rows.forEach((r, i) => { const k = r.law_slug + "|" + r.num; const h = hits.get(k) || { r, score: 0 }; h.score += w / (i + 1) + (r.rank || 0) * 0.2; hits.set(k, h); });
+  const qs = [...new Set([q, ...plan.queries])].slice(0, 6);
+  const jobs = qs.map((x) => L.search(x, 10, scope).then((rows) => add(rows, 1)).catch(() => {}));
+  if (!scope) for (const slug of plan.laws) jobs.push(L.search([q, ...plan.queries].join(" ").slice(0, 1500), 8, slug).then((rows) => add(rows, 1.6)).catch(() => {}));
+  await Promise.all(jobs);
+  const inLaw = (r) => plan.laws.includes(r.law_slug) || plan.laws.some((s) => (S.lawList || []).find((l) => l.slug === r.law_slug)?.parent === s);
+  return [...hits.values()].map((h) => ({ ...h, score: h.score + (inLaw(h.r) ? 0.8 : 0) })).sort((a, b) => b.score - a.score).slice(0, 18).map((h) => h.r);
+}
 F.chatAsk = async (d) => {
   const q = (d.q || "").trim(); if (!q || S.chatBusy) return;
   if (!needSample()) return; const L = LAWS(); if (!L) return toast("المكتبة غير متاحة في هذا العرض.", true);
   if (!S.lawList) { try { S.lawList = await L.list(); } catch {} }
   const threads = S.chatThreads || []; let t = threads.find((x) => x.id === S.chatId);
   const history = (t?.messages || []).slice(-8);
-  const ctl = new AbortController(); S.chatBusy = { q, text: "", ctl }; render();
+  const ctl = new AbortController(); S.chatBusy = { q, text: "", ctl, stage: "يحلل السؤال ويحدد الأنظمة ذات الصلة…" }; render();
+  const stage = (txt) => { S.chatBusy.stage = txt; const b = $("#chat-stream .thinking"); if (b) b.textContent = txt; };
+  const save = async (ai) => {
+    const now = nowIso(); const msgs = [...(t?.messages || []), { role: "user", text: q, at: now }, { ...ai, role: "ai", at: now }];
+    if (t) await upd(`${chatPath()}/${t.id}`, { messages: clean(msgs) });
+    else { const ref = S.caps.db.collection(chatPath()).doc(); await ref.set(clean({ title: q.slice(0, 70), messages: msgs, scope: S.chatScope || null, by: S.me.id, createdAt: now, updatedAt: now })); S.chatId = ref.id; }
+  };
   try {
-    const lastQ = [...history].reverse().find((m) => m.role === "user")?.text || "";
-    const rows = await L.search(`${q} ${lastQ}`.slice(0, 2000), 14, S.chatScope?.slug || null);
-    const ctx = rows.map((r, i) => `[${i + 1}] ${lawLabel(r)}${r.status ? ` [${r.status}]` : ""} — ${r.article}:\n${String(r.body).slice(0, 1500)}`).join("\n\n");
+    const plan = await chatPlan(q, history, ctl.signal);
+    if (plan.clarify && plan.options.length) { await save({ text: plan.clarify, options: plan.options, plan: { intent: plan.intent, laws: [] } }); return; }
+    const lawNames = plan.laws.map((s) => (S.lawList || []).find((l) => l.slug === s)?.name).filter(Boolean);
+    stage(`يبحث في ${lawNames.length ? lawNames.join("، ") : "المكتبة النظامية"}…`);
+    const rows = await chatRetrieve(q, plan);
+    stage(`وجد ${rows.length} نصًا ذا صلة، يصوغ الجواب…`);
+    const ctx = rows.map((r, i) => `[${i + 1}] ${lawLabel(r)}${r.status ? ` [${r.status}]` : ""} — ${r.article}:\n${String(r.body).slice(0, 1800)}`).join("\n\n");
     const en = /[A-Za-z]{4,}/.test(q) && !/[؀-ۿ]/.test(q);
-    const instr = `أنت المستشار النظامي في «${S.firm.nameAr}». أجب عن سؤال المحامي من النصوص الرسمية المرفقة من المكتبة النظامية (أنظمة المملكة العربية السعودية ولوائحها والمبادئ والتعاميم).
-قواعد الإجابة:
-- ابدأ بالجواب المباشر في سطر أو سطرين، ثم التفصيل في نقاط قصيرة.
-- بعد كل حكم اذكر مصدره بين قوسين: (اسم النظام أو اللائحة — رقم المادة) كما ورد في النصوص، ويمكنك الإحالة برقم المرجع [n].
-- قدّم نص النظام ثم ما تفصّله لائحته، وراعِ حالة النفاذ المذكورة بين المعقوفين.
-- إن لم تكفِ النصوص المرفقة للإجابة فقل ذلك صراحة، واذكر ما يلزم التحقق منه، ولا تخترع أرقام مواد.
-- ${en ? "Answer in English." : "اكتب بالعربية الفصحى الموجزة"}، دون عناوين Markdown أو جداول.
-- اختم بسطر قصير عند الحاجة: ما يلزم مراعاته عمليًا (مهلة، جهة مختصة، مستند).
+    // Stage 3 — answer only from the retrieved texts, every statement tied to its source number.
+    const instr = `أنت المستشار النظامي في «${S.firm.nameAr}». أجب عن سؤال المحامي إجابة دقيقة مستندة حصرًا إلى النصوص الرسمية المرقمة أدناه من المكتبة النظامية.
+المطلوب كما فهمته: ${plan.intent}
+قواعد ملزمة:
+1. ابدأ بالجواب المباشر في سطر أو سطرين يجيب عن المطلوب تحديدًا (نعم/لا، المدة، الجهة، الحكم…).
+2. ثم التفصيل في نقاط قصيرة تبدأ بـ «- »، وكل نقطة تنتهي برقم مصدرها بين معقوفين مثل [3]، وإن استندت إلى أكثر من نص فاذكرها [2][5].
+3. لا تذكر حكمًا أو مدة أو رقم مادة لم يرد في النصوص المرقمة. وإن احتجت معلومة عامة غير موجودة فيها فقل صراحة: «لم أجد في المكتبة نصًا على …».
+4. انقل العبارة الحاسمة من النص حرفيًا بين «» عند ذكر القاعدة الأساسية.
+5. قدّم نص النظام، ثم ما تفصّله لائحته أو المبادئ والتعاميم التابعة له، وراعِ حالة النفاذ المذكورة بين المعقوفين (مثل نظام يُعمل به من تاريخ لاحق).
+6. إن كان للمسألة استثناء أو شرط أو مهلة في النصوص فاذكره.
+7. اختم إن لزم بسطر يبدأ بـ «عمليًا:» يذكر الخطوة أو المهلة أو الجهة المختصة.
+8. ${en ? "Answer in English, quoting the Arabic text where decisive." : "اكتب بالعربية الفصحى الموجزة الواضحة"}، بلا عناوين Markdown ولا جداول ولا **.
 تاريخ اليوم: ${todayStr()} الموافق ${fmtHijri(todayStr())}.${S.chatScope ? `\nنطاق السؤال: ${S.chatScope.name} وما يتبعه.` : ""}
 
-النصوص المرفقة:
+النصوص المرقمة:
 ${ctx || "(لم يُعثر على نصوص مطابقة في المكتبة)"}
 
-السؤال: ${q}`;
-    const messages = [...history.map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.text })), { role: "user", content: instr }];
+سؤال المحامي: ${q}`;
+    const messages = [...history.filter((m) => !m.options?.length || m.role === "user").map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: String(m.text).replace(/\[\d{1,2}\]/g, "") })), { role: "user", content: instr }];
     const { text } = await S.caps.sample(messages, { signal: ctl.signal, modelTier: "default", onText: ({ text }) => { S.chatBusy.text = text; const b = $("#chat-stream"); if (b) { b.textContent = text; const log = $("#chat-log"); if (log) log.scrollTop = log.scrollHeight; } } });
-    const used = new Set([...text.matchAll(/\[(\d{1,2})\]/g)].map((m) => +m[1] - 1));
-    const refs = rows.filter((r, i) => used.has(i) || text.includes(r.article)).slice(0, 8).map((r) => ({ slug: r.law_slug, law: r.law_name, parent: r.parent_name || "", article: r.article, body: String(r.body).slice(0, 2500) }));
-    const now = nowIso(); const msgs = [...(t?.messages || []), { role: "user", text: q, at: now }, { role: "ai", text: text.trim(), refs, at: now }];
-    if (t) { await upd(`${chatPath()}/${t.id}`, { messages: msgs }); }
-    else { const ref = S.caps.db.collection(chatPath()).doc(); await ref.set(clean({ title: q.slice(0, 70), messages: msgs, scope: S.chatScope || null, by: S.me.id, createdAt: now, updatedAt: now })); S.chatId = ref.id; }
+    // Citation check: every [n] must point to a retrieved text; an article number named in prose must exist among them.
+    const used = new Set([...text.matchAll(/\[(\d{1,2})\]/g)].map((m) => +m[1]));
+    const bogus = [...used].some((n) => n < 1 || n > rows.length);
+    const named = [...text.matchAll(/المادة\s+([^\s،.:)\]]+(?:\s+(?:بعد|عشرة|والعشرون|والثلاثون|والأربعون|والخمسون|والستون|والسبعون|والثمانون|والتسعون|المائة|المائتين)){0,4})/g)].map((m) => m[0]);
+    const unknown = named.filter((a) => !/المادة\s+(المذكورة|السابقة|نفسها|ذاتها|أعلاه|التالية|الآتية|المشار)/.test(a)).filter((a) => !rows.some((r) => r.article.includes(a.replace(/^المادة\s+/, "").split(" ")[0])));
+    const refs = rows.map((r, i) => ({ n: i + 1, cited: used.has(i + 1), slug: r.law_slug, law: r.law_name, parent: r.parent_name || "", article: r.article, body: String(r.body).slice(0, 2500) })).filter((r) => r.cited);
+    await save({ text: text.trim(), refs, plan: { intent: plan.intent, laws: lawNames }, unverified: bogus || unknown.length > 0 });
   } catch (e) { aiErr(e); }
   finally { S.chatBusy = null; render(); setTimeout(() => $("#chat-q")?.focus(), 50); }
 };
