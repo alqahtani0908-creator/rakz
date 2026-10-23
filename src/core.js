@@ -4,8 +4,8 @@ const LOGO = { iconLight: "__ICON_LIGHT__", iconDark: "__ICON_DARK__", textLight
 const FIRM_DEFAULTS = {
   nameAr: "ركز النظامية للمحاماة والاستشارات القانونية",
   nameEn: "Rakz Alnizamiyah Law and Legal Consultancy",
-  city: "الرياض", address: "الرياض – حي الملقا", email: "info@rakzlaw.com", website: "www.rakzlaw.com",
-  phone: "", cr: "", license: "", vat: "", iban: "", bank: "",
+  city: "الرياض", address: "الرياض، ظهرة لبن، شارع نجد، مبنى وقف غراس، الدور الثاني، مكتب 9", email: "info@rakzlaw.sa", website: "rakzlaw.sa", cr: "7055126010", phone: "0555827442 - 0552022543",
+  license: "", vat: "", iban: "", bank: "",
   paymentTerms: "50% عند توقيع العقد، و50% عند صدور الحكم الابتدائي.",
   proposalValidity: 30,
 };
@@ -93,6 +93,14 @@ const lsSet = (k, v) => { try { localStorage.setItem("rakz:" + k, JSON.stringify
 
 /* ---------- icons ---------- */
 const IC = {
+  home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+  shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  brief: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2"/><path d="M3 13h18"/>',
+  book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/><path d="M8 7h7"/>',
+  bot: '<rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 4v4"/><circle cx="12" cy="3.5" r="1"/><circle cx="9" cy="13.5" r="1.2"/><circle cx="15" cy="13.5" r="1.2"/><path d="M2 13v2M22 13v2"/>',
+  building: '<path d="M4 21V4h11v17"/><path d="M15 9h5v12"/><path d="M8 8h3M8 12h3M8 16h3"/>',
+  family: '<circle cx="8" cy="7" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2 20c0-3.5 2.7-6 6-6s6 2.5 6 6"/><path d="M14 20c0-2.5 1.5-4.5 3-4.5s4 1.5 4 4.5"/>',
+  cpu: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
   dash: '<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
   cases: '<path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3"/><path d="M4 12h16"/>',
@@ -163,6 +171,7 @@ function subscribeAll() {
     }, (e) => { console.warn(c, e); S.loaded[c] = true; scheduleRender(); });
   }
   db.doc("settings/firm").onSnapshot((d) => { S.firm = { ...FIRM_DEFAULTS, ...(d.exists ? d.data() : {}) }; scheduleRender(); }, () => {});
+  db.doc("settings/brand").onSnapshot((d) => { S.brand = d.exists ? d.data() : null; loadBrandFonts(); scheduleRender(); }, () => {});
   db.doc("settings/templates").onSnapshot((d) => { S.templates = d.exists ? d.data() : {}; scheduleRender(); }, () => {});
 }
 function subscribeCase(id) {
@@ -230,7 +239,8 @@ function renderSide() {
       <div class="nav-sec">الصياغة</div>
       ${n("contracts", "العقود", "contract")}
       ${n("drafting", "اللوائح وعروض الأتعاب", "docs")}
-      ${window.RAKZ_LAWS ? n("laws", "المكتبة النظامية", "scale") : ""}
+      ${window.RAKZ_LAWS ? n("laws", "المكتبة النظامية", "book") : ""}
+      ${window.RAKZ_LAWS ? n("chat", "اسأل المكتبة", "bot") : ""}
       <div class="nav-sec">الإدارة</div>
       ${isManager() ? n("finance", "المالية", "coin", S.data.fees.filter((f) => f.status === "pending").length || "") : ""}
       ${n("clients", "العملاء", "clients")}

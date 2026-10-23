@@ -79,7 +79,7 @@ function sendModal(ctx) {
   // ctx: { title, subject, text, phone, email, caseId, record: "docs/id" | "finance/id" | "consults/id", docTitle, docBody, label }
   S.send = ctx; S.sendFile = null;
   if (ctx.docBody) {
-    buildDocx(ctx.docTitle, ctx.docBody).then((blob) => { if (S.send === ctx) S.sendFile = new File([blob], safeName(ctx.docTitle) + ".docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }); }).catch((e) => console.warn(e));
+    buildDocx(ctx.docTitle, ctx.docBody, ctx.paper).then((blob) => { if (S.send === ctx) S.sendFile = new File([blob], safeName(ctx.docTitle) + ".docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }); }).catch((e) => console.warn(e));
   }
   const canShare = !!(navigator.canShare && ctx.docBody);
   modal(ctx.title || "إرسال للعميل", `<div class="stack" style="gap:12px">
@@ -113,10 +113,10 @@ A.sendVia = async (el) => {
     if (!navigator.canShare(data)) return toast("المتصفح لا يدعم مشاركة الملفات؛ استخدم «تنزيل Word».", true);
     try { await navigator.share(data); } catch (e) { if (e?.name === "AbortError") return; console.warn(e); return toast("تعذّرت المشاركة", true); }
   } else if (ch === "pdf") {
-    try { await exportPdf(ctx.docTitle, ctx.docBody); } catch (e) { console.error(e); toast("تعذّر تجهيز PDF.", true); }
+    try { await exportPdf(ctx.docTitle, ctx.docBody, ctx.paper); } catch (e) { console.error(e); toast("تعذّر تجهيز PDF.", true); }
     return;
   } else if (ch === "file") {
-    try { const blob = S.sendFile || (await buildDocx(ctx.docTitle, ctx.docBody)); await S.caps.downloads.save({ filename: safeName(ctx.docTitle) + ".docx", data: blob }); toast("جاهز للتنزيل"); }
+    try { const blob = S.sendFile || (await buildDocx(ctx.docTitle, ctx.docBody, ctx.paper)); await S.caps.downloads.save({ filename: safeName(ctx.docTitle) + ".docx", data: blob }); toast("جاهز للتنزيل"); }
     catch (e) { if (e?.code !== "declined") toast("تعذّر إنشاء ملف Word.", true); }
     return;
   }
@@ -153,7 +153,7 @@ A.sendDoc = (el) => {
   const cl = clientOf(d); const plain = mdPlain(body);
   const inv = d.finId ? byId(S.data.finance, d.finId) : null;
   const text = inv ? invoiceMessage(inv) : `السلام عليكم ${cl.name || ""}،\nنرفق لكم: ${title}.${plain.length <= 1500 ? `\n\n${plain}` : "\n(المستند في الملف المرفق)"}${signoff()}`;
-  sendModal({ title: "إرسال المستند", subject: `${title} — ${S.firm.nameAr}`, text, phone: cl.phone, email: cl.email, caseId: d.caseId, record: `docs/${d.id}`, label: `«${title}»`, docTitle: title, docBody: body });
+  sendModal({ title: "إرسال المستند", subject: `${title} — ${S.firm.nameAr}`, text, phone: cl.phone, email: cl.email, caseId: d.caseId, record: `docs/${d.id}`, label: `«${title}»`, docTitle: title, docBody: body, paper: $("#doc-paper")?.value || d.paper || "official" });
 };
 /* A consultation's opinion. */
 A.sendConsult = (el) => {

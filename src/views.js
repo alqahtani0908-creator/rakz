@@ -491,6 +491,7 @@ VIEWS.settings = () => {
       <div class="field span2"><label for="st-pt">شروط السداد الافتراضية</label><input id="st-pt" class="inp" name="paymentTerms" value="${esc(f.paymentTerms)}" ${ro ? "disabled" : ""}></div>
       <div class="field"><label for="st-pv">صلاحية عرض الأتعاب (يوم)</label><input id="st-pv" class="inp num" name="proposalValidity" value="${esc(f.proposalValidity)}" ${ro ? "disabled" : ""}></div>
       ${ro ? "" : `<div class="span2"><button class="btn primary" type="submit">حفظ البيانات</button></div>`}</form></div>
+  ${brandCard()}
   <div class="card"><div class="card-h"><h3>نماذج العقود الأساسية</h3><span class="sub">تُملأ الحقول بين {{ }} تلقائيًا من بيانات العميل والقضية</span></div>
     <p class="small muted" style="margin:0 0 12px">الحقول المتاحة: ${PLACEHOLDERS.map((p) => `<code>{{${p[0]}}}</code> ${p[1]}`).join(" · ")}</p>
     <form data-form="saveTemplates" class="stack" style="gap:14px">${Object.entries(CONTRACT_TEMPLATES).map(([k, t]) => `<div class="field"><label for="tp-${k}">${t.name}</label><textarea id="tp-${k}" class="inp" name="${k}" rows="10" style="font-family:var(--f-doc)" ${ro ? "disabled" : ""}>${esc(S.templates[k] || t.body)}</textarea></div>`).join("")}

@@ -532,10 +532,10 @@ VIEWS.doc = () => {
       <button class="btn ghost danger" data-act="deleteDoc" data-id="${d.id}" aria-label="حذف">${icon("trash")}</button>`}</div></div>
   <div class="editor"><div class="field"><label for="doc-body">النص <span class="muted">— # عنوان · ## قسم · 1. بند مرقم · - نقطة · | جدول | · !| توقيع | · > سطر في الوسط · **غامق**</span></label>
       <textarea id="doc-body" class="inp" dir="auto" data-draft="doc.${d.id}" data-live="preview" ${generating ? "readonly" : ""}>${esc(body)}</textarea></div>
-    <div class="field"><label>المعاينة بترويسة المكتب</label><div id="doc-checks"></div><div id="preview"></div></div></div>`;
+    <div class="field"><div class="row" style="justify-content:space-between"><label for="doc-paper">المعاينة على ورق المكتب</label><select id="doc-paper" class="inp" style="width:auto;padding-block:4px" data-ch="docPaper" data-id="${d.id}">${Object.entries(PAPERS).map(([k, v]) => opt(k, v.label, d.paper || "official")).join("")}</select></div><div id="doc-checks"></div><div id="preview"></div></div></div>`;
 };
 function livePreview() {
-  const t = $("#doc-body"), p = $("#preview"); if (!t || !p) return; p.innerHTML = paperHtml(t.value);
+  const t = $("#doc-body"), p = $("#preview"); if (!t || !p) return; p.innerHTML = paperHtml(t.value, $("#doc-paper")?.value || "official");
   const k = docChecks(t.value), box = $("#doc-checks"); if (!box) return;
   box.innerHTML = `<div class="doc-checks">${k.blanks ? `<span class="pill warn">${k.blanks} فراغ يحتاج تعبئة</span><button class="btn sm" data-act="fillBlanks">${icon("edit")}عبّئ الفراغات</button>` : '<span class="pill ok">لا فراغات</span>'}${k.verify ? `<span class="pill bad">${k.verify} موضع يحتاج تحققًا من مادة نظامية</span>` : ""}${k.hasTitle ? "" : '<span class="pill">بلا عنوان رئيسي (#)</span>'}</div>`;
 }
@@ -553,6 +553,7 @@ F.fillBlanks = (d) => {
   S.drafts["doc." + S.route.id] = t.value; closeModal(); livePreview(); toast("عُبّئت الفراغات. اضغط «حفظ» لاعتمادها.");
 };
 CH.preview = debounce(livePreview, 150);
+CH.docPaper = async (el) => { livePreview(); try { await upd(`docs/${el.dataset.id}`, { paper: el.value }); } catch {} };
 A.saveDoc = async (el) => { const id = el.dataset.id; const body = $("#doc-body").value; const title = $("#doc-title").value.trim() || "مستند"; await upd(`docs/${id}`, { body, title }); delete S.drafts["doc." + id]; delete S.drafts["doct." + id]; toast("حُفظ المستند"); };
 A.toggleFinal = async (el) => { const d = byId(S.data.docs, el.dataset.id); const fin = d.status !== "final"; await upd(`docs/${d.id}`, { status: fin ? "final" : "draft", body: $("#doc-body").value }); if (fin && d.caseId) await logCase(d.caseId, "doc", `اعتُمد المستند كنسخة نهائية: ${d.title}`); toast(fin ? "اعتُمد المستند" : "أُعيد مسودة"); };
 A.deleteDoc = (el) => confirmBox("حذف المستند", "سيُحذف المستند نهائيًا.", "حذف", async () => { await del(`docs/${el.dataset.id}`); go("drafting", null, "all"); toast("حُذف"); }, true);
@@ -561,7 +562,7 @@ A.exportDocx = async (el) => {
   if (!S.caps.downloads) return toast("التنزيل غير متاح في هذا العرض.", true);
   const title = $("#doc-title").value.trim() || "مستند"; const body = $("#doc-body").value;
   el.disabled = true;
-  try { const blob = await buildDocx(title, body); await S.caps.downloads.save({ filename: title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 90) + ".docx", data: blob }); toast("جاهز للتنزيل"); }
+  try { const blob = await buildDocx(title, body, $("#doc-paper")?.value || byId(S.data.docs, el.dataset.id)?.paper || "official"); await S.caps.downloads.save({ filename: title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 90) + ".docx", data: blob }); toast("جاهز للتنزيل"); }
   catch (e) { if (e?.code !== "declined") { console.error(e); toast("تعذّر إنشاء ملف Word.", true); } }
   finally { el.disabled = false; }
 };

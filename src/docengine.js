@@ -74,8 +74,10 @@ function blocksHtml(blocks) {
     return `<p dir="auto">${inlineHtml(b.text)}</p>`;
   }).join("");
 }
-function paperHtml(body) {
-  const f = S.firm;
+function paperHtml(body, paperKey = "official") {
+  const f = S.firm; const pp = paperOf(paperKey);
+  // On stationery: the page image repeats every A4 height; padding in % of the width keeps the margins true at any size.
+  if (pp.img) return `<div class="paper on-paper" id="paper" dir="${docDir(body)}" style="background-image:url('${pp.img}');padding:${(pp.top / 2.1).toFixed(2)}% ${(pp.side / 2.1).toFixed(2)}% ${(pp.bottom / 2.1).toFixed(2)}%">${blocksHtml(parseBlocks(body))}</div>`;
   return `<div class="paper" id="paper" dir="${docDir(body)}"><div class="lh"><img class="w" src="${LOGO.textLight}" alt="${esc(f.nameAr)}"><img class="m" src="${LOGO.iconLight}" alt=""></div>${blocksHtml(parseBlocks(body))}
     <div class="ft"><span>${esc([f.address || f.city, f.email, f.website, f.phone].filter(Boolean).join("  |  "))}</span><span>صفحة 1</span></div></div>`;
 }
@@ -110,8 +112,10 @@ function wTbl(b) {
     <w:tblGrid>${ws.map((w) => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>
     ${b.rows.map((r, i) => `<w:tr><w:trPr><w:cantSplit/>${head && i === 0 ? "<w:tblHeader/>" : ""}</w:trPr>${ws.map((w, j) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${head && i === 0 ? `<w:shd w:val="clear" w:color="auto" w:fill="${SHADE}"/>` : ""}<w:vAlign w:val="center"/></w:tcPr>${wP(r[j] || "", { style: "TableText", bold: (head && i === 0) || (b.plain && i === 0), keyBold: false, jc: b.plain ? "center" : undefined })}</w:tc>`).join("")}</w:tr>`).join("")}</w:tbl>${wP("", { style: "Gap" })}`;
 }
-function docxParts(title, body) {
+function docxParts(title, body, paperKey = "plain", paperImg = null) {
   const f = S.firm; let numId = 1; const nums = []; DOC_DIR = docDir(body);
+  const pp = paperImg ? paperOf(paperKey) : null; const tw = (mm) => Math.round(mm * 56.693);
+  const FONT = S.brand?.fonts?.length ? BRAND_WORD_FONT : null;
   const content = parseBlocks(body).map((b) => {
     if (b.t === "h1") return wP(b.text, { style: "Title" });
     if (b.t === "h2") return wP(b.text, { style: "Heading1" });
@@ -127,17 +131,21 @@ function docxParts(title, body) {
   const emu = (px) => Math.round(px * 9525);
   const img = (rid, id, w, h) => `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${emu(w)}" cy="${emu(h)}"/><wp:docPr id="${id}" name="logo${id}"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="logo${id}.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(w)}" cy="${emu(h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
   const cell = (w, inner, jc) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:bidi/><w:spacing w:before="0" w:after="0"/>${jc ? `<w:jc w:val="${jc}"/>` : ""}</w:pPr>${inner}</w:p></w:tc>`;
-  const header = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${NS}>
+  // Stationery: the whole page image, anchored to the page behind the text, in the header so it repeats on every page.
+  const A4 = { cx: 7560000, cy: 10692000 };
+  const paperHeader = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${NS}><w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr><w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="1" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="${A4.cx}" cy="${A4.cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="9" name="paper"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="9" name="paper.jpg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdP"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${A4.cx}" cy="${A4.cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p></w:hdr>`;
+  const header = pp ? paperHeader : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${NS}>
     <w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/><w:bottom w:val="single" w:sz="8" w:space="0" w:color="${BRONZE}"/></w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr>
     <w:tblGrid><w:gridCol w:w="7300"/><w:gridCol w:w="2000"/></w:tblGrid><w:tr>${cell(7300, img("rIdT", 1, 226, 62))}${cell(2000, img("rIdI", 2, 36, 62), "center")}</w:tr></w:tbl>
     <w:p><w:pPr><w:bidi/><w:spacing w:before="0" w:after="0"/></w:pPr></w:p></w:hdr>`;
   const fld = (code) => `<w:r><w:rPr><w:rtl/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:rtl/></w:rPr><w:instrText xml:space="preserve"> ${code} </w:instrText></w:r><w:r><w:rPr><w:rtl/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:rtl/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:rtl/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>`;
-  const footer = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${NS}>
+  const pageNo = `<w:p><w:pPr><w:pStyle w:val="Footer"/><w:bidi/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space="preserve">صفحة </w:t></w:r>${fld("PAGE")}<w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space="preserve"> من </w:t></w:r>${fld("NUMPAGES")}</w:p>`;
+  const footer = pp ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${NS}>${pageNo}</w:ftr>` : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${NS}>
     <w:p><w:pPr><w:pStyle w:val="Footer"/><w:pBdr><w:top w:val="single" w:sz="4" w:space="4" w:color="${RULE}"/></w:pBdr><w:bidi/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space="preserve">${X([f.address || f.city, f.email, f.website, f.phone].filter(Boolean).join("   |   "))}</w:t></w:r></w:p>
     <w:p><w:pPr><w:pStyle w:val="Footer"/><w:bidi/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space="preserve">صفحة </w:t></w:r>${fld("PAGE")}<w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space="preserve"> من </w:t></w:r>${fld("NUMPAGES")}</w:p></w:ftr>`;
   const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${NS}><w:body>${content}
-    <w:sectPr><w:headerReference w:type="default" r:id="rIdH"/><w:footerReference w:type="default" r:id="rIdF"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="2000" w:right="1300" w:bottom="1500" w:left="1300" w:header="600" w:footer="500" w:gutter="0"/>${DOC_DIR === "rtl" ? "<w:bidi/>" : ""}</w:sectPr></w:body></w:document>`;
-  const rpr = (o) => `<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="${o.font || "Simplified Arabic"}"/>${o.b ? "<w:b/><w:bCs/>" : ""}${o.color ? `<w:color w:val="${o.color}"/>` : ""}<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/><w:rtl/></w:rPr>`;
+    <w:sectPr><w:headerReference w:type="default" r:id="rIdH"/><w:footerReference w:type="default" r:id="rIdF"/><w:pgSz w:w="11906" w:h="16838"/>${pp ? `<w:pgMar w:top="${tw(pp.top)}" w:right="${tw(pp.side)}" w:bottom="${tw(pp.bottom)}" w:left="${tw(pp.side)}" w:header="0" w:footer="${tw(3)}" w:gutter="0"/>` : '<w:pgMar w:top="2000" w:right="1300" w:bottom="1500" w:left="1300" w:header="600" w:footer="500" w:gutter="0"/>'}${DOC_DIR === "rtl" ? "<w:bidi/>" : ""}</w:sectPr></w:body></w:document>`;
+  const rpr = (o) => `<w:rPr><w:rFonts w:ascii="${FONT || "Arial"}" w:hAnsi="${FONT || "Arial"}" w:cs="${o.font || FONT || "Simplified Arabic"}"/>${o.b ? "<w:b/><w:bCs/>" : ""}${o.color ? `<w:color w:val="${o.color}"/>` : ""}<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/><w:rtl/></w:rPr>`;
   const st = (id, name, ppr, r, extra = "") => `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${name}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>${extra}<w:pPr><w:bidi/>${ppr}</w:pPr>${rpr(r)}</w:style>`;
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
     <w:docDefaults><w:rPrDefault>${rpr({ sz: 28 }).replace("<w:rtl/>", '<w:lang w:val="en-US" w:bidi="ar-SA"/>')}</w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:spacing w:after="120" w:line="360" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr></w:pPrDefault></w:docDefaults>
@@ -160,17 +168,19 @@ function docxParts(title, body) {
   const settings = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:updateFields w:val="true"/><w:defaultTabStop w:val="720"/><w:themeFontLang w:val="en-US" w:bidi="ar-SA"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
   const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
   return {
-    "[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`,
+    "[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`,
     "_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`,
     "docProps/core.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${X(title)}</dc:title><dc:creator>${X(f.nameAr)}</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString().slice(0, 19)}Z</dcterms:created></cp:coreProperties>`,
     "word/document.xml": doc, "word/styles.xml": styles, "word/numbering.xml": numbering, "word/settings.xml": settings, "word/header1.xml": header, "word/footer1.xml": footer,
     "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdS" Type="${REL}/styles" Target="styles.xml"/><Relationship Id="rIdN" Type="${REL}/numbering" Target="numbering.xml"/><Relationship Id="rIdG" Type="${REL}/settings" Target="settings.xml"/><Relationship Id="rIdH" Type="${REL}/header" Target="header1.xml"/><Relationship Id="rIdF" Type="${REL}/footer" Target="footer1.xml"/></Relationships>`,
-    "word/_rels/header1.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdT" Type="${REL}/image" Target="media/text.png"/><Relationship Id="rIdI" Type="${REL}/image" Target="media/icon.png"/></Relationships>`,
+    "word/_rels/header1.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdT" Type="${REL}/image" Target="media/text.png"/><Relationship Id="rIdI" Type="${REL}/image" Target="media/icon.png"/>${pp ? `<Relationship Id="rIdP" Type="${REL}/image" Target="media/paper.jpg"/>` : ""}</Relationships>`,
   };
 }
-async function buildDocx(title, body) {
+async function buildDocx(title, body, paperKey = "official") {
   await loadScript(JSZIP);
-  const zip = new JSZip(); const parts = docxParts(title, body);
+  const img = await paperData(paperKey);
+  const zip = new JSZip(); const parts = docxParts(title, body, paperKey, img);
+  if (img) zip.file("word/media/paper.jpg", img.split(",")[1], { base64: true });
   for (const [k, v] of Object.entries(parts)) zip.file(k, v);
   zip.file("word/media/text.png", LOGO.textLight.split(",")[1], { base64: true });
   zip.file("word/media/icon.png", LOGO.iconLight.split(",")[1], { base64: true });
@@ -201,23 +211,35 @@ table.plain { break-inside: avoid; margin-top: 18px; }
 hr { border: 0; border-top: 1px solid #d8cfc6; margin: 12px 0; }
 mark { background: none; color: inherit; }
 .ft { border-top: 1px solid #e5ddd5; margin-top: 14px; padding-top: 6px; font: 8.5pt "IBM Plex Sans Arabic", sans-serif; color: #6b7280; text-align: center; }`;
-function printHtml(title, body) {
-  const f = S.firm;
+function printHtml(title, body, paperKey = "plain", paperImg = null) {
+  const f = S.firm; const pp = paperImg ? paperOf(paperKey) : null;
   const dir = docDir(body);
+  const brandCss = FONT_FACE_CSS ? `${FONT_FACE_CSS}body,.ft{font-family:"${BRAND_FAMILY}","Noto Naskh Arabic",serif!important}` : "";
+  // On stationery the page has no printed margin except a thin strip at the bottom for the page number; the image is
+  // fixed to each page and repeating table header/footer rows keep the text clear of the letterhead.
+  if (pp) return `<!doctype html><html lang="${dir === "ltr" ? "en" : "ar"}" dir="${dir}"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;600;700&display=block">
+<style>${PRINT_CSS}${dir === "ltr" ? 'body{direction:ltr;font-family:Georgia,"Times New Roman",serif;font-size:12pt}' : ""}${brandCss}
+@page { size: A4; margin: 0 0 8mm 0; @bottom-center { content: "صفحة " counter(page) " من " counter(pages); font: 8pt sans-serif; color: #9aa0a8; vertical-align: top; } }
+.bg { position: fixed; top: 0; left: 0; width: 210mm; height: 289mm; overflow: hidden; z-index: -1; } .bg img { width: 210mm; height: 297mm; display: block; }
+table.page > * > tr > td { padding: 0 ${pp.side}mm; } table.page > thead td { height: ${pp.top}mm; } table.page > tfoot td { height: ${Math.max(0, pp.bottom - 8)}mm; }</style></head>
+<body><div class="bg"><img src="${paperImg}" alt=""></div><table class="page"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot>
+<tbody><tr><td>${blocksHtml(parseBlocks(body))}</td></tr></tbody></table></body></html>`;
   return `<!doctype html><html lang="${dir === "ltr" ? "en" : "ar"}" dir="${dir}"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&family=Noto+Naskh+Arabic:wght@400;600;700&display=block">
-<style>${PRINT_CSS}${dir === "ltr" ? 'body{direction:ltr;font-family:Georgia,"Times New Roman",serif;font-size:12pt}' : ""}</style></head><body><table class="page">
+<style>${PRINT_CSS}${dir === "ltr" ? 'body{direction:ltr;font-family:Georgia,"Times New Roman",serif;font-size:12pt}' : ""}${brandCss}</style></head><body><table class="page">
 <thead><tr><td><div class="lh"><img class="w" src="${LOGO.textLight}" alt=""><img class="m" src="${LOGO.iconLight}" alt=""></div></td></tr></thead>
 <tfoot><tr><td><div class="ft">${esc([f.nameAr, f.cr ? "س.ت " + f.cr : "", f.address || f.city, f.phone, f.email, f.website].filter(Boolean).join("  |  "))}</div></td></tr></tfoot>
 <tbody><tr><td>${blocksHtml(parseBlocks(body))}</td></tr></tbody></table></body></html>`;
 }
-async function exportPdf(title, body) {
+async function exportPdf(title, body, paperKey = "official") {
+  const img = await paperData(paperKey);
   document.getElementById("pdf-frame")?.remove();
   const fr = document.createElement("iframe");
   fr.id = "pdf-frame"; fr.title = "PDF"; fr.setAttribute("aria-hidden", "true");
   fr.style.cssText = "position:fixed;width:0;height:0;border:0;inset-inline-start:-9999px;bottom:0";
   document.body.appendChild(fr);
-  const doc = fr.contentDocument; doc.open(); doc.write(printHtml(title, body)); doc.close();
+  const doc = fr.contentDocument; doc.open(); doc.write(printHtml(title, body, paperKey, img)); doc.close();
   // Wait for the fonts and letterhead images, otherwise the first print falls back to system fonts.
   await new Promise((r) => (doc.readyState === "complete" ? r() : fr.contentWindow.addEventListener("load", r, { once: true })));
   try { await Promise.race([doc.fonts.ready, new Promise((r) => setTimeout(r, 3500))]); } catch {}
@@ -229,5 +251,5 @@ A.exportPdf = async (el) => {
   const d = byId(S.data.docs, el.dataset.id);
   const title = ($("#doc-title")?.value || d?.title || "مستند").trim(); const body = $("#doc-body")?.value ?? d?.body ?? "";
   el.disabled = true; toast("يُجهَّز الملف… اختر «حفظ بصيغة PDF» من نافذة الطباعة");
-  try { await exportPdf(title, body); } catch (e) { console.error(e); toast("تعذّر تجهيز PDF.", true); } finally { el.disabled = false; }
+  try { await exportPdf(title, body, $("#doc-paper")?.value || d?.paper || "official"); } catch (e) { console.error(e); toast("تعذّر تجهيز PDF.", true); } finally { el.disabled = false; }
 };
