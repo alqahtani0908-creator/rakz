@@ -181,6 +181,14 @@
     navigator.serviceWorker.addEventListener("message", (e) => { if (e.data?.rakzGo && typeof go === "function") go(e.data.rakzGo); });
   }
 
+  /* ---------- archive & renewal (table archives, RPCs archive_create / archive_restore / archive_snapshot) ---------- */
+  if (sb) window.RAKZ_ARCHIVE = {
+    async list() { const { data, error } = await sb.from("archives").select("id,title,note,cleared,counts,created_at,created_by").order("created_at", { ascending: false }); if (error) throw err("upstream_error", error.message); return data || []; },
+    async create(title, note, clear) { const { data, error } = await sb.rpc("archive_create", { p_title: title, p_note: note || null, p_clear: clear || [] }); if (error) throw err(/requires_manager/.test(error.message) ? "forbidden" : "upstream_error", error.message); return data; },
+    async restore(id) { const { data, error } = await sb.rpc("archive_restore", { p_id: id }); if (error) throw err("upstream_error", error.message); return data; },
+    async snapshot(id) { const { data, error } = await sb.rpc("archive_snapshot", { p_id: id }); if (error) throw err("upstream_error", error.message); return data || []; },
+  };
+
   /* ---------- law library (tables law_sources / law_articles, RPC search_laws) ---------- */
   if (sb) window.RAKZ_LAWS = {
     async list() { const { data, error } = await sb.from("law_sources").select("*").order("ord", { nullsFirst: false }).order("name"); if (error) throw error; return data || []; },

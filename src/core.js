@@ -93,6 +93,7 @@ const lsSet = (k, v) => { try { localStorage.setItem("rakz:" + k, JSON.stringify
 
 /* ---------- icons ---------- */
 const IC = {
+  box: '<path d="M3 7h18v4H3z"/><path d="M5 11v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8"/><path d="M10 15h4"/>',
   play: '<path d="M8 5.5v13l10-6.5z"/>',
   share: '<path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M6 11v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6"/><path d="M12 17h.01"/>',
@@ -253,6 +254,7 @@ function renderSide() {
       ${n2("clients", "العملاء", "clients")}
       ${n2("team", "فريق العمل", "team")}
       ${n2("settings", "الإعدادات والهوية", "settings")}
+      ${n2("archive", "الأرشيف وتجديد المنصة", "box")}
     </nav>${meBox}`;
     return;
   }
@@ -282,7 +284,7 @@ const NAV_HINT = {
   contracts: "صياغة العقود ومراجعتها", laws: "الأنظمة واللوائح الرسمية", chat: "سؤال قانوني بإجابة موثقة",
   clients: "بيانات العملاء وقضاياهم", najiz: "استيراد مستجدات القضايا من ناجز",
   admin: "المؤشرات المالية والمقارنات", finreqs: "اعتماد أو رفض طلبات المحامين", finfiles: "مالية كل قضية حتى إقفالها",
-  finance: "المطالبات والفواتير الضريبية والقيود", team: "الأعضاء وصلاحياتهم", settings: "بيانات المكتب والخط والورق",
+  finance: "المطالبات والفواتير الضريبية والقيود", team: "الأعضاء وصلاحياتهم", settings: "بيانات المكتب والخط والورق", archive: "حفظ نسخة كاملة وبدء فترة جديدة",
 };
 function renderBnav() {
   const b = $(".bnav"); if (!b) return;

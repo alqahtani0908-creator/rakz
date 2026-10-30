@@ -5,7 +5,7 @@
    Lawyers raise «طلبات مالية» from a case (an expense, a payment received, a claim to issue, or their fee proposal);
    nothing touches the books until a manager approves it (database triggers guard_finreq / guard_finclose). */
 
-const ADMIN_ROUTES = ["admin", "finfiles", "finfile", "finance", "finreqs", "team", "settings"];
+const ADMIN_ROUTES = ["admin", "finfiles", "finfile", "finance", "finreqs", "team", "settings", "archive"];
 const SHARED_ROUTES = ["clients", "doc", "portal"];
 const portalOf = (r) => (ADMIN_ROUTES.includes(r) ? "admin" : SHARED_ROUTES.includes(r) ? null : "pro");
 const REQ_TYPES = {

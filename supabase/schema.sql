@@ -197,3 +197,124 @@ end $$;
 drop trigger if exists push_notify on public.documents;
 create trigger push_notify after insert or update on public.documents for each row when (new.collection in ('cases', 'tasks', 'finreq', 'fees')) execute function public.push_on_change();
 select cron.schedule('rakz-push-daily', '0 4 * * *', $$select net.http_post(url := 'https://lsjtgzifniawkvbvytoi.supabase.co/functions/v1/push', body := '{"mode":"daily"}'::jsonb, headers := '{"Content-Type":"application/json"}'::jsonb)$$);
+
+-- ============ (see also) Archive & renewal ============
+-- ============ Archive & renewal ============
+-- archive_create() always stores a full copy of every record (documents) first, then — only if asked — clears
+-- the chosen groups so the platform starts a new period. archive_restore() puts an archive's records back
+-- (after archiving the current state). Team members and settings are never cleared. Manager only.
+create table if not exists public.archives (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  note text,
+  cleared text[] not null default '{}',
+  counts jsonb not null default '{}',
+  snapshot jsonb not null,
+  created_at timestamptz not null default now(),
+  created_by text
+);
+alter table public.archives enable row level security;
+drop policy if exists archives_mgr_select on public.archives;
+create policy archives_mgr_select on public.archives for select to authenticated using (public.is_manager());
+
+-- which records belong to a group
+create or replace function public.archive_in_group(g text, coll text, d jsonb) returns boolean
+language sql immutable as $$
+  select case g
+    when 'finance' then coll in ('finance', 'journal', 'finreq', 'fees') or (coll = 'docs' and d->>'kind' = 'invoice')
+    when 'work' then coll in ('cases', 'tasks', 'consults') or coll like 'cases/%' or coll like 'consults/%' or (coll = 'docs' and coalesce(d->>'kind', '') <> 'invoice')
+    when 'clients' then coll = 'clients'
+    else false end;
+$$;
+
+create or replace function public.archive_create(p_title text, p_note text default null, p_clear text[] default '{}')
+returns uuid language plpgsql security definer set search_path = public as $$
+declare aid uuid; g text; snap jsonb; cnt jsonb;
+begin
+  if not public.is_manager() then raise exception 'requires_manager'; end if;
+  if exists (select 1 from unnest(coalesce(p_clear, '{}')) x where x not in ('finance', 'work', 'clients')) then raise exception 'bad_group'; end if;
+  select coalesce(jsonb_agg(jsonb_build_object('path', path, 'collection', collection, 'id', id, 'data', data, 'updated_at', updated_at)), '[]'::jsonb) into snap from public.documents;
+  select coalesce(jsonb_object_agg(k, n), '{}'::jsonb) into cnt from (select split_part(collection, '/', 1) || case when collection like '%/%' then '/' || split_part(collection, '/', 3) else '' end k, count(*) n from public.documents group by 1) s;
+  insert into public.archives (title, note, cleared, counts, snapshot, created_by)
+  values (coalesce(nullif(trim(p_title), ''), 'أرشيف ' || to_char(now() at time zone 'Asia/Riyadh', 'YYYY-MM-DD')), p_note, coalesce(p_clear, '{}'), cnt, snap, auth.jwt()->>'email')
+  returning id into aid;
+  if coalesce(array_length(p_clear, 1), 0) > 0 then
+    perform set_config('rakz.archiving', 'on', true); -- lets this transaction remove posted entries (they are in the archive)
+    foreach g in array p_clear loop
+      delete from public.documents d where public.archive_in_group(g, d.collection, d.data);
+    end loop;
+    if 'finance' = any(p_clear) and not ('work' = any(p_clear)) then
+      update public.documents set data = data - 'fee' - 'finClosed', updated_at = now()
+      where collection in ('cases', 'consults') and (data ? 'fee' or data ? 'finClosed');
+    end if;
+  end if;
+  return aid;
+end $$;
+
+create or replace function public.archive_restore(p_id uuid)
+returns int language plpgsql security definer set search_path = public as $$
+declare a public.archives; n int;
+begin
+  if not public.is_manager() then raise exception 'requires_manager'; end if;
+  select * into a from public.archives where id = p_id; if not found then raise exception 'not_found'; end if;
+  perform public.archive_create('قبل استعادة «' || a.title || '»', 'نسخة تلقائية من الوضع السابق للاستعادة', '{}');
+  perform set_config('rakz.archiving', 'on', true);
+  insert into public.documents (path, collection, id, data, updated_at)
+  select r->>'path', r->>'collection', r->>'id', r->'data', now() from jsonb_array_elements(a.snapshot) r
+  where split_part(r->>'collection', '/', 1) not in ('lawyers', 'settings')
+  on conflict (path) do update set data = excluded.data, updated_at = now();
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+create or replace function public.archive_snapshot(p_id uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when public.is_manager() then (select snapshot from public.archives where id = p_id) end;
+$$;
+
+revoke all on function public.archive_create(text, text, text[]) from public, anon;
+revoke all on function public.archive_restore(uuid) from public, anon;
+revoke all on function public.archive_snapshot(uuid) from public, anon;
+grant execute on function public.archive_create(text, text, text[]) to authenticated;
+grant execute on function public.archive_restore(uuid) to authenticated;
+grant execute on function public.archive_snapshot(uuid) to authenticated;
+
+-- posted entries and tax invoices stay immutable, except inside an archive transaction (they are kept in the archive)
+create or replace function public.guard_journal() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare dr numeric; cr numeric;
+begin
+  if current_setting('rakz.archiving', true) = 'on' then return coalesce(new, old); end if;
+  if tg_op = 'DELETE' then
+    if old.collection = 'journal' and auth.uid() is not null then raise exception 'journal_immutable'; end if;
+    return old;
+  end if;
+  if new.collection <> 'journal' then return new; end if;
+  if tg_op = 'UPDATE' and auth.uid() is not null then raise exception 'journal_immutable'; end if;
+  select coalesce(sum((l->>'dr')::numeric), 0), coalesce(sum((l->>'cr')::numeric), 0)
+    into dr, cr from jsonb_array_elements(coalesce(new.data->'lines', '[]'::jsonb)) l;
+  if dr <= 0 or round(dr, 2) <> round(cr, 2) then raise exception 'journal_unbalanced'; end if;
+  return new;
+end $$;
+
+create or replace function public.guard_tax() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if current_setting('rakz.archiving', true) = 'on' then return coalesce(new, old); end if;
+  if tg_op = 'DELETE' then
+    if old.collection = 'finance' and old.data ? 'tax' and auth.uid() is not null then raise exception 'tax_invoice_immutable'; end if;
+    return old;
+  end if;
+  if new.collection <> 'finance' or tg_op <> 'UPDATE' or not (old.data ? 'tax') then return new; end if;
+  if (new.data->'tax') is distinct from (old.data->'tax')
+     or (new.data->'amount') is distinct from (old.data->'amount')
+     or (new.data->'total') is distinct from (old.data->'total')
+     or (new.data->'vat') is distinct from (old.data->'vat')
+     or (new.data->'vatAmount') is distinct from (old.data->'vatAmount')
+     or (new.data->'clientId') is distinct from (old.data->'clientId')
+     or (new.data->'desc') is distinct from (old.data->'desc')
+     or coalesce(new.data->>'status','') = 'void' then
+    raise exception 'tax_invoice_immutable';
+  end if;
+  return new;
+end $$;

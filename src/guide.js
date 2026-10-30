@@ -52,6 +52,7 @@ const HOWTO = [
   { t: "إصدار مطالبة أو فاتورة ضريبية", w: "النظام الإداري ← المطالبات والفواتير", r: "finance", ic: "receipt", mgr: true },
   { t: "إقفال الملف المالي لقضية", w: "النظام الإداري ← الملفات المالية ← القضية", r: "finfiles", ic: "cases", mgr: true },
   { t: "إضافة عضو إلى الفريق", w: "النظام الإداري ← فريق العمل", r: "team", ic: "team", mgr: true },
+  { t: "أرشفة البيانات وبدء فترة جديدة", w: "النظام الإداري ← الأرشيف وتجديد المنصة", r: "archive", ic: "box", mgr: true },
 ];
 A.help = () => {
   const list = HOWTO.filter((h) => (!h.mgr || isManager()) && (h.need !== "laws" || window.RAKZ_LAWS));
