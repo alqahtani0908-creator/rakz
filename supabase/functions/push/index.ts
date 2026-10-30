@@ -1,7 +1,8 @@
-// Rakz — phone notifications (Supabase Edge Function «push», deployed without JWT verification).
+// Rakz — phone notifications (Supabase Edge Function «push»). Supabase verifies the caller's JWT; the database
+// trigger and the daily job call it with the project's public anon key.
 // Modes:
 //   outbox — delivers what the database trigger push_on_change() recorded in public.push_outbox, then empties it.
-//            Anyone may call it: it only ever delivers events that really happened.
+//            It only ever delivers events that really happened.
 //   daily  — morning digest (pg_cron, 07:00 Riyadh): sessions today/tomorrow, overdue tasks, pending approvals.
 //            Runs at most once a day (public.push_runs).
 //   test   — a signed-in member sends a test notification to their own devices.

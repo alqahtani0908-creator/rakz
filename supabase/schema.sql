@@ -159,7 +159,7 @@ revoke all on function public.guard_finclose() from public, anon, authenticated;
 
 -- ============ Phone notifications (Web Push) ============
 -- Devices: public.push_subs (saved through push_save()). Events: trigger push_on_change() → public.push_outbox → pg_net →
--- Edge Function «push» (deployed with verify_jwt = false; needs the secret VAPID_PRIVATE_KEY). Morning digest: pg_cron 04:00 UTC.
+-- Edge Function «push» (JWT verification on; the trigger and cron send the public anon key; needs the secret VAPID_PRIVATE_KEY). Morning digest: pg_cron 04:00 UTC.
 create extension if not exists pg_net with schema extensions;
 create extension if not exists pg_cron;
 create table if not exists public.push_subs (endpoint text primary key, email text not null, p256dh text not null, auth text not null, ua text, created_at timestamptz not null default now(), last_ok timestamptz);
@@ -190,13 +190,13 @@ begin
   end if;
   if not relevant or not exists (select 1 from public.push_subs) then return new; end if;
   insert into public.push_outbox (op, collection, doc_id, old_data, new_data) values (tg_op, new.collection, new.id, case when tg_op = 'UPDATE' then old.data end, new.data);
-  perform net.http_post(url := 'https://lsjtgzifniawkvbvytoi.supabase.co/functions/v1/push', body := '{"mode":"outbox"}'::jsonb, headers := '{"Content-Type":"application/json"}'::jsonb);
+  perform net.http_post(url := 'https://lsjtgzifniawkvbvytoi.supabase.co/functions/v1/push', body := '{"mode":"outbox"}'::jsonb, headers := '{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzanRnemlmbmlhd2t2YnZ5dG9pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NDI0MzIsImV4cCI6MjEwNzIxODQzMn0.HpvC81_nw6X7YyB2AWu3YhMo_rTC8q_vtwbkg4EeGiQ"}'::jsonb);
   return new;
 exception when others then return new;
 end $$;
 drop trigger if exists push_notify on public.documents;
 create trigger push_notify after insert or update on public.documents for each row when (new.collection in ('cases', 'tasks', 'finreq', 'fees')) execute function public.push_on_change();
-select cron.schedule('rakz-push-daily', '0 4 * * *', $$select net.http_post(url := 'https://lsjtgzifniawkvbvytoi.supabase.co/functions/v1/push', body := '{"mode":"daily"}'::jsonb, headers := '{"Content-Type":"application/json"}'::jsonb)$$);
+select cron.schedule('rakz-push-daily', '0 4 * * *', $$select net.http_post(url := 'https://lsjtgzifniawkvbvytoi.supabase.co/functions/v1/push', body := '{"mode":"daily"}'::jsonb, headers := '{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzanRnemlmbmlhd2t2YnZ5dG9pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NDI0MzIsImV4cCI6MjEwNzIxODQzMn0.HpvC81_nw6X7YyB2AWu3YhMo_rTC8q_vtwbkg4EeGiQ"}'::jsonb)$$);
 
 -- ============ (see also) Archive & renewal ============
 -- ============ Archive & renewal ============
