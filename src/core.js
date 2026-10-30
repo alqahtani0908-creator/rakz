@@ -93,6 +93,8 @@ const lsSet = (k, v) => { try { localStorage.setItem("rakz:" + k, JSON.stringify
 
 /* ---------- icons ---------- */
 const IC = {
+  up: '<path d="M7 14l5-5 5 5"/>',
+  down: '<path d="M7 10l5 5 5-5"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
   shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
   brief: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2"/><path d="M3 13h18"/>',

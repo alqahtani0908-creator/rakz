@@ -15,11 +15,6 @@ VIEWS.dashboard = () => {
   const upcoming = openTasks().filter((t) => t.due && daysLeft(t.due) >= 0 && daysLeft(t.due) <= 14 && ["session", "memo", "requirement", "event"].includes(t.kind)).sort((a, b) => (a.due + (a.time || "")).localeCompare(b.due + (b.time || ""))).slice(0, 8);
   const urgent = openTasks().filter((t) => t.due).sort((a, b) => a.due.localeCompare(b.due)).filter((t) => daysLeft(t.due) <= 3).slice(0, 7);
 
-  const statusCounts = Object.keys(STATUSES).map((k) => [k, S.data.cases.filter((c) => (c.status || "intake") === k).length]);
-  const total = S.data.cases.length || 1;
-  const colorFor = { intake: "var(--info)", active: "var(--accent)", judgment: "var(--warn)", appeal: "var(--bad)", cassation: "#8A3A6B", review: "#B07A2A", execution: "var(--ink-2)", closed: "var(--ok)" };
-  const load = S.data.lawyers.filter((l) => l.active !== false).map((l) => [l, act.filter((c) => c.lawyerId === l.id).length]).sort((a, b) => b[1] - a[1]);
-  const maxLoad = Math.max(1, ...load.map((x) => x[1]));
   const recent = [...S.data.cases].filter((c) => c.lastAction).sort((a, b) => (b.lastAction.at || "").localeCompare(a.lastAction.at || "")).slice(0, 6);
 
   const empty = S.loaded.cases && !S.data.cases.length;
@@ -44,6 +39,8 @@ VIEWS.dashboard = () => {
   </section>
   ${steps.some((s) => !s.done) ? `<div class="card"><div class="card-h"><h3>تهيئة المنصة</h3><span class="sub">${steps.filter((s) => s.done).length} من 4</span></div>
     <div class="onb">${steps.map((s, i) => `<div class="step ${s.done ? "done" : ""}" data-act="${s.act || "go"}" data-r="${s.r || ""}"><span class="n">${s.done ? "✓" : i + 1}</span><b>${s.t}</b><span class="muted small">${s.d}</span></div>`).join("")}</div></div>` : ""}
+  ${empty ? "" : proInsights()}
+  ${sectionHead("المتابعة اليومية")}
 
   <div class="cols">
     <div class="stack">
@@ -55,13 +52,6 @@ VIEWS.dashboard = () => {
       </div>
     </div>
     <div class="stack">
-      <div class="card"><div class="card-h"><h3>القضايا حسب الحالة</h3><span class="sub num">${S.data.cases.length} قضية</span></div>
-        <div class="stackbar">${statusCounts.filter((x) => x[1]).map(([k, n]) => `<span title="${STATUSES[k].t}: ${n}" style="width:${(n / total) * 100}%;background:${colorFor[k]}"></span>`).join("")}</div>
-        <div class="legend">${statusCounts.map(([k, n]) => `<span><i style="background:${colorFor[k]}"></i>${STATUSES[k].t} <b class="num">${n}</b></span>`).join("")}</div>
-      </div>
-      <div class="card"><div class="card-h"><h3>حمل العمل لدى الفريق</h3><span class="sub">قضايا غير منتهية</span></div>
-        ${load.length ? `<div class="bars">${load.map(([l, n]) => `<div class="bar-row"><span>${esc(l.name)}</span><div class="track"><div class="fill ${l.id === myLid() ? "gold" : ""}" style="width:${(n / maxLoad) * 100}%"></div></div><span class="n">${n}</span></div>`).join("")}</div>` : emptyBox("team", "لم يُضف أحد إلى الفريق بعد", "", `<button class="btn sm" data-act="go" data-r="team">إضافة محامٍ</button>`)}
-      </div>
       ${(() => { const due = act.filter((c) => c.clientId && (!c.lastReportAt || Date.now() - new Date(c.lastReportAt) > 14 * 864e5) && (!myLid() || c.lawyerId === myLid())).slice(0, 5);
         return due.length ? `<div class="card"><div class="card-h"><h3>عملاء بانتظار تقرير مستجدات</h3><span class="sub">لم يصلهم تقرير منذ 14 يومًا</span></div><div class="list">${due.map((c) => `<div class="li clickable" data-act="openCase" data-id="${c.id}" data-tab="reports"><span class="ic" style="color:var(--ok)">${icon("wa")}</span><div class="body"><div class="ttl">${esc(clientName(c.clientId))}</div><div class="meta"><span>${esc(c.title)}</span><span>${c.lastReportAt ? "آخر تقرير " + ago(c.lastReportAt) : "لم يُرسل تقرير"}</span></div></div></div>`).join("")}</div></div>` : ""; })()}
       <div class="card"><div class="card-h"><h3>آخر الإجراءات</h3></div>
@@ -163,7 +153,7 @@ F.saveCase = async (d) => {
   }
   const base = { title: d.title.trim(), clientId: clientId || "", clientRole: d.clientRole, opponent: d.opponent, type: d.type, court: d.court, city: d.city, circuit: d.circuit, najiz: d.najiz, status: d.status, value: d.value, fee: isManager() ? d.fee : caseById(d.id)?.fee, description: d.description };
   if (d.id) {
-    const old = caseById(d.id); await upd(`cases/${d.id}`, base);
+    const old = caseById(d.id); await upd(`cases/${d.id}`, { ...base, ...(old && old.status !== d.status ? { closedAt: d.status === "closed" ? todayStr() : null } : {}) });
     if (old && old.status !== d.status) await logCase(d.id, "status", `تغيير الحالة إلى «${STATUSES[d.status].t}»`);
     else await logCase(d.id, "note", "تحديث بيانات القضية");
     closeModal(); toast("حُفظت التعديلات"); return;
@@ -327,7 +317,7 @@ A.declineAsg = (el) => {
 F.decline = async (d) => { const c = caseById(d.id); await upd(`cases/${c.id}`, { assignment: { ...c.assignment, status: "declined", reason: d.reason, respondedAt: nowIso() } }); await logCase(c.id, "assign", `اعتذر ${lawyerName(c.assignment.to)} عن الإسناد: ${d.reason}`); closeModal(); toast("أُرسل الاعتذار إلى من أسند القضية"); };
 A.cancelAsg = async (el) => { const c = caseById(el.dataset.id); await upd(`cases/${c.id}`, { assignment: { ...c.assignment, status: "cancelled", respondedAt: nowIso() } }); await logCase(c.id, "assign", `أُلغي طلب الإسناد إلى ${lawyerName(c.assignment.to)}`); toast("أُلغي الطلب"); };
 A.bulkStatus = () => modal("تغيير حالة القضايا المحددة", `<form id="bs-form" data-form="bulkStatus"><div class="field"><label for="bs-s">الحالة الجديدة</label><select id="bs-s" class="inp" name="status">${Object.entries(STATUSES).map(([k, v]) => opt(k, v.t)).join("")}</select></div></form>`, `<button class="btn primary" type="submit" form="bs-form">تطبيق</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
-F.bulkStatus = async (d) => { for (const id of S.ui.selected) { await upd(`cases/${id}`, { status: d.status }); await logCase(id, "status", `تغيير الحالة إلى «${STATUSES[d.status].t}»`); } closeModal(); S.ui.selected.clear(); toast("حُدّثت الحالات"); render(); };
+F.bulkStatus = async (d) => { for (const id of S.ui.selected) { await upd(`cases/${id}`, { status: d.status, closedAt: d.status === "closed" ? (caseById(id)?.closedAt || todayStr()) : null }); await logCase(id, "status", `تغيير الحالة إلى «${STATUSES[d.status].t}»`); } closeModal(); S.ui.selected.clear(); toast("حُدّثت الحالات"); render(); };
 
 VIEWS.assign = () => {
   const l = myLid();

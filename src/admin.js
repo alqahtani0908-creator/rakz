@@ -49,6 +49,8 @@ VIEWS.admin = () => {
       <button class="kpi attn" data-act="go" data-r="finance"><span class="lbl">المستحق على العملاء</span><span class="val">${money(t.outstanding)}</span><span class="foot">متأخر ${money(t.late)}</span></button>
       <button class="kpi ${np.length + nf.length ? "alert" : ""}" data-act="go" data-r="finreqs"><span class="lbl">بانتظار اعتمادك</span><span class="val">${np.length + nf.length}</span><span class="foot">${np.length} طلب مالي · ${nf.length} أتعاب</span></button>
       <button class="kpi ${toClose.length ? "attn" : ""}" data-act="finfilesFilter" data-f="toclose"><span class="lbl">ملفات بانتظار الإقفال</span><span class="val">${toClose.length}</span><span class="foot">قضايا منتهية بملف مالي مفتوح</span></button></div></section>
+  ${adminInsights()}
+  ${sectionHead("المتابعة والاعتماد")}
   <div class="cols"><div class="stack">
     <div class="card"><div class="card-h"><h3>بانتظار اعتمادك</h3><a class="sub" data-act="go" data-r="finreqs" style="cursor:pointer">الكل ←</a></div>
       ${np.length || nf.length ? `<div class="list">${[...np.map(reqRow), ...nf.map((f) => feeRow(f, true))].slice(0, 8).join("")}</div>` : emptyBox("check", "لا طلبات معلقة", "تصل هنا طلبات المحامين المالية واقتراحات الأتعاب.")}</div>
