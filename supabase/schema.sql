@@ -156,3 +156,44 @@ end; $$;
 drop trigger if exists guard_finclose on public.documents;
 create trigger guard_finclose before insert or update on public.documents for each row execute function public.guard_finclose();
 revoke all on function public.guard_finclose() from public, anon, authenticated;
+
+-- ============ Phone notifications (Web Push) ============
+-- Devices: public.push_subs (saved through push_save()). Events: trigger push_on_change() → public.push_outbox → pg_net →
+-- Edge Function «push» (deployed with verify_jwt = false; needs the secret VAPID_PRIVATE_KEY). Morning digest: pg_cron 04:00 UTC.
+create extension if not exists pg_net with schema extensions;
+create extension if not exists pg_cron;
+create table if not exists public.push_subs (endpoint text primary key, email text not null, p256dh text not null, auth text not null, ua text, created_at timestamptz not null default now(), last_ok timestamptz);
+alter table public.push_subs enable row level security;
+create policy push_subs_own_select on public.push_subs for select to authenticated using (lower(email) = lower(coalesce(auth.jwt()->>'email', '')));
+create policy push_subs_own_delete on public.push_subs for delete to authenticated using (lower(email) = lower(coalesce(auth.jwt()->>'email', '')));
+create or replace function public.push_save(p_endpoint text, p_p256dh text, p_auth text, p_ua text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_member() then raise exception 'forbidden'; end if;
+  insert into public.push_subs (endpoint, email, p256dh, auth, ua) values (p_endpoint, lower(auth.jwt()->>'email'), p_p256dh, p_auth, left(p_ua, 300))
+  on conflict (endpoint) do update set email = excluded.email, p256dh = excluded.p256dh, auth = excluded.auth, ua = excluded.ua, created_at = now();
+end $$;
+revoke all on function public.push_save(text, text, text, text) from public, anon;
+grant execute on function public.push_save(text, text, text, text) to authenticated;
+create table if not exists public.push_outbox (id bigint generated always as identity primary key, op text not null, collection text not null, doc_id text not null, old_data jsonb, new_data jsonb, created_at timestamptz not null default now());
+alter table public.push_outbox enable row level security;
+create table if not exists public.push_runs (day date primary key, at timestamptz not null default now());
+alter table public.push_runs enable row level security;
+create or replace function public.push_on_change() returns trigger
+language plpgsql security definer set search_path = public, extensions as $$
+declare relevant boolean := false;
+begin
+  if new.collection = 'cases' then
+    relevant := (tg_op = 'INSERT' and jsonb_typeof(new.data->'assignment') = 'object') or (tg_op = 'UPDATE' and (old.data->'assignment') is distinct from (new.data->'assignment'));
+  elsif new.collection = 'tasks' then relevant := tg_op = 'INSERT' or (old.data->>'assignee') is distinct from (new.data->>'assignee');
+  elsif new.collection in ('finreq', 'fees') then relevant := tg_op = 'INSERT' or (old.data->>'status') is distinct from (new.data->>'status');
+  end if;
+  if not relevant or not exists (select 1 from public.push_subs) then return new; end if;
+  insert into public.push_outbox (op, collection, doc_id, old_data, new_data) values (tg_op, new.collection, new.id, case when tg_op = 'UPDATE' then old.data end, new.data);
+  perform net.http_post(url := 'https://lsjtgzifniawkvbvytoi.supabase.co/functions/v1/push', body := '{"mode":"outbox"}'::jsonb, headers := '{"Content-Type":"application/json"}'::jsonb);
+  return new;
+exception when others then return new;
+end $$;
+drop trigger if exists push_notify on public.documents;
+create trigger push_notify after insert or update on public.documents for each row when (new.collection in ('cases', 'tasks', 'finreq', 'fees')) execute function public.push_on_change();
+select cron.schedule('rakz-push-daily', '0 4 * * *', $$select net.http_post(url := 'https://lsjtgzifniawkvbvytoi.supabase.co/functions/v1/push', body := '{"mode":"daily"}'::jsonb, headers := '{"Content-Type":"application/json"}'::jsonb)$$);

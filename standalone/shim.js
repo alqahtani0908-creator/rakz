@@ -146,6 +146,41 @@
     async list() { return { assets: [], usage: {} }; },
   };
 
+  /* ---------- phone notifications (Web Push; table push_subs, function «push», docs/sw.js) ----------
+     iPhone shows web notifications only for a site added to the home screen and opened from its icon. */
+  if (sb && "serviceWorker" in navigator) {
+    const VAPID = "BJngIDWHuu62WM0mlrcSjksYqxwSoUjtX-VZic2m7rSlD5inQJfTMd92ZKmpgkuOZ0cJw3u6Cc0h1jd-eHm88vU";
+    const swReady = navigator.serviceWorker.register("sw.js").catch(() => null);
+    const key = (s) => { const r = atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(r, (c) => c.charCodeAt(0)); };
+    const ios = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    const current = async () => { const reg = await swReady; return reg ? reg.pushManager.getSubscription() : null; };
+    window.RAKZ_PUSH = {
+      ios, standalone,
+      /* on · off · denied · install (iPhone, not opened from the home screen) · unsupported */
+      async state() {
+        if (!("PushManager" in window) || !("Notification" in window)) return ios() && !standalone() ? "install" : "unsupported";
+        if (Notification.permission === "denied") return "denied";
+        return (await current()) && Notification.permission === "granted" ? "on" : "off";
+      },
+      async enable() {
+        const perm = await Notification.requestPermission(); // must be the first await: iOS needs the tap
+        if (perm !== "granted") throw err("denied");
+        const reg = (await swReady) || (await navigator.serviceWorker.ready);
+        const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key(VAPID) }));
+        const j = sub.toJSON();
+        const { error } = await sb.rpc("push_save", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_ua: navigator.userAgent });
+        if (error) throw err("save_failed", error.message);
+      },
+      async disable() { const sub = await current(); if (!sub) return; await sb.from("push_subs").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); },
+      async test() {
+        const r = await fetch(CFG.supabaseUrl + "/functions/v1/push", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session?.access_token, apikey: CFG.supabaseAnonKey }, body: JSON.stringify({ mode: "test" }) });
+        const j = await r.json().catch(() => ({})); if (!r.ok) throw err(j.error || "HTTP " + r.status); return j.sent || 0;
+      },
+    };
+    navigator.serviceWorker.addEventListener("message", (e) => { if (e.data?.rakzGo && typeof go === "function") go(e.data.rakzGo); });
+  }
+
   /* ---------- law library (tables law_sources / law_articles, RPC search_laws) ---------- */
   if (sb) window.RAKZ_LAWS = {
     async list() { const { data, error } = await sb.from("law_sources").select("*").order("ord", { nullsFirst: false }).order("name"); if (error) throw error; return data || []; },

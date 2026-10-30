@@ -699,7 +699,7 @@ a > svg { width: 1em; height: 1em; vertical-align: -0.15em; }
    Glass — every surface is frosted glass over a soft bronze & navy wash
    ===================================================================== */
 :root {
-  --glass: rgba(255,255,255,.44); --glass-strong: rgba(255,255,255,.82); --glass-line: rgba(255,255,255,.78);
+  --glass: rgba(255,255,255,.44); --glass-strong: rgba(255,255,255,.95); --glass-line: rgba(255,255,255,.78);
   --glass-hi: inset 0 1px 0 rgba(255,255,255,.75); --glass-sheen: linear-gradient(150deg, rgba(255,255,255,.45), rgba(255,255,255,.06) 55%);
   --blur: saturate(1.6) blur(18px); --track: rgba(20,34,54,.07); --grid: rgba(20,34,54,.07);
   --wash: radial-gradient(900px 620px at 92% -8%, rgba(200,172,142,.55), transparent 62%), radial-gradient(760px 620px at -4% 34%, rgba(45,95,139,.24), transparent 62%), radial-gradient(720px 520px at 58% 108%, rgba(163,131,107,.26), transparent 62%);
@@ -707,7 +707,7 @@ a > svg { width: 1em; height: 1em; vertical-align: -0.15em; }
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --glass: rgba(17,28,42,.55); --glass-strong: rgba(15,25,38,.88); --glass-line: rgba(255,255,255,.08);
+    --glass: rgba(17,28,42,.55); --glass-strong: rgba(15,25,38,.96); --glass-line: rgba(255,255,255,.08);
     --glass-hi: inset 0 1px 0 rgba(255,255,255,.06); --glass-sheen: linear-gradient(150deg, rgba(255,255,255,.06), rgba(255,255,255,0) 55%);
     --track: rgba(255,255,255,.07); --grid: rgba(255,255,255,.06);
     --wash: radial-gradient(900px 620px at 92% -8%, rgba(200,172,142,.16), transparent 62%), radial-gradient(760px 620px at -4% 34%, rgba(77,130,190,.16), transparent 62%), radial-gradient(720px 520px at 58% 108%, rgba(163,131,107,.12), transparent 62%);
@@ -715,7 +715,7 @@ a > svg { width: 1em; height: 1em; vertical-align: -0.15em; }
   }
 }
 :root[data-theme="dark"] {
-  --glass: rgba(17,28,42,.55); --glass-strong: rgba(15,25,38,.88); --glass-line: rgba(255,255,255,.08);
+  --glass: rgba(17,28,42,.55); --glass-strong: rgba(15,25,38,.96); --glass-line: rgba(255,255,255,.08);
   --glass-hi: inset 0 1px 0 rgba(255,255,255,.06); --glass-sheen: linear-gradient(150deg, rgba(255,255,255,.06), rgba(255,255,255,0) 55%);
   --track: rgba(255,255,255,.07); --grid: rgba(255,255,255,.06);
   --wash: radial-gradient(900px 620px at 92% -8%, rgba(200,172,142,.16), transparent 62%), radial-gradient(760px 620px at -4% 34%, rgba(77,130,190,.16), transparent 62%), radial-gradient(720px 520px at 58% 108%, rgba(163,131,107,.12), transparent 62%);
@@ -807,3 +807,39 @@ button.stat { cursor: pointer; } button.stat:hover { transform: translateY(-2px)
 .hero .btn:not(.gold):hover { background: rgba(255,255,255,.14); border-color: var(--accent-2); }
 .donut-wrap { justify-content: center; }
 .legend.col { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 7px 16px; }
+
+/* ---------- menus: a hint under each item ---------- */
+.nav a .nv { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.35; }
+.nav a .nv small { font-size: 11px; font-weight: 400; color: var(--nav-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.nav a.on .nv small { color: rgba(237,230,223,.7); }
+.nav a { padding-block: 8px; }
+.nav-sec { padding-top: 14px; }
+
+/* ---------- phone notifications ---------- */
+.push-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.push-row > svg { width: 20px; height: 20px; color: var(--accent-ink); flex: none; }
+.push-row .grow { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; min-width: 140px; }
+.card .push-row { border-top: 0; }
+.how ol { margin: 6px 0 0; padding-inline-start: 22px; display: flex; flex-direction: column; gap: 6px; }
+.how svg { width: 15px; height: 15px; vertical-align: -3px; color: var(--accent-ink); }
+
+/* ---------- usage guide ---------- */
+.howto { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; margin-top: 10px; }
+.howto-i { display: flex; gap: 12px; align-items: center; text-align: start; padding: 12px; border-radius: 14px; border: 1px solid var(--glass-line); background: var(--glass-sheen), var(--glass); color: var(--ink); font: inherit; cursor: pointer; transition: transform .15s, box-shadow .15s, border-color .15s; }
+.howto-i:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); border-color: var(--accent-2); }
+.howto-i .law-ic { width: 38px; height: 38px; border-radius: 12px; } .howto-i .law-ic svg { width: 18px; height: 18px; }
+.howto-i b { display: block; font-size: 13.5px; } .howto-i small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.5; margin-top: 2px; }
+
+/* ---------- first-visit tour ---------- */
+.tour { position: fixed; inset: 0; z-index: 400; }
+.tour-hole { position: fixed; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(8,14,24,.62), 0 0 0 2px var(--accent-2), 0 0 24px 4px rgba(200,172,142,.45); transition: top .3s, left .3s, width .3s, height .3s; pointer-events: none; }
+.tour-hole.none { top: 50%; left: 50%; width: 0; height: 0; box-shadow: 0 0 0 9999px rgba(8,14,24,.62); }
+.tour-card { position: fixed; width: min(340px, calc(100vw - 32px)); background: var(--glass-strong); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); border: 1px solid var(--glass-line); border-radius: 18px; padding: 18px 18px 14px; box-shadow: 0 30px 70px -20px rgba(0,0,0,.5); color: var(--ink); animation: rise .3s both; }
+.tour-card h3 { margin: 4px 0 6px; font-family: var(--f-display); font-size: 21px; }
+.tour-card p { margin: 0 0 12px; color: var(--ink-2); line-height: 1.8; font-size: 13.5px; }
+.tour-n { font-size: 11.5px; color: var(--accent-ink); font-weight: 700; }
+.tour-dots { display: flex; gap: 4px; margin-bottom: 12px; } .tour-dots i { width: 6px; height: 6px; border-radius: 99px; background: var(--line-2); transition: width .2s; } .tour-dots i.on { width: 18px; background: var(--gold-grad); }
+.tour-push { margin: -2px 0 12px; }
+@media (prefers-reduced-motion: reduce) { .tour-hole { transition: none; } .tour-card { animation: none; } }
+
+@media (max-width: 860px) { .notif-pop { position: fixed; top: calc(60px + env(safe-area-inset-top, 0px)); left: 12px; right: 12px; width: auto; } }

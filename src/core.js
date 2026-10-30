@@ -93,6 +93,9 @@ const lsSet = (k, v) => { try { localStorage.setItem("rakz:" + k, JSON.stringify
 
 /* ---------- icons ---------- */
 const IC = {
+  play: '<path d="M8 5.5v13l10-6.5z"/>',
+  share: '<path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M6 11v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6"/><path d="M12 17h.01"/>',
   up: '<path d="M7 14l5-5 5 5"/>',
   down: '<path d="M7 10l5 5 5-5"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
@@ -229,10 +232,10 @@ function afterRender() { while (after.length) { try { after.shift()(); } catch (
 function renderSide() {
   const pend = pendingForMe().length;
   const late = openTasks().filter((t) => isMine(t) && daysLeft(t.due) !== null && daysLeft(t.due) < 0).length;
-  const n = (k, label, ic, badge) => `<a class="${S.route.name === k || (k === "cases" && S.route.name === "case") || (k === "drafting" && S.route.name === "doc" && !["agreement", "creview", "invoice"].includes(byId(S.data.docs, S.route.id)?.kind)) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") || (k === "consults" && S.route.name === "consult") || (k === "contracts" && (S.route.name === "creview" || (S.route.name === "doc" && ["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)))) ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
+  const n = (k, label, ic, badge) => `<a class="${S.route.name === k || (k === "cases" && S.route.name === "case") || (k === "drafting" && S.route.name === "doc" && !["agreement", "creview", "invoice"].includes(byId(S.data.docs, S.route.id)?.kind)) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") || (k === "consults" && S.route.name === "consult") || (k === "contracts" && (S.route.name === "creview" || (S.route.name === "doc" && ["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)))) ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span class="nv">${label}${NAV_HINT[k] ? `<small>${NAV_HINT[k]}</small>` : ""}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
   const me = myLawyer(); const admin = S.portal === "admin" && isManager();
   const npend = (S.data.finreq || []).filter((r) => (r.status || "pending") === "pending").length + S.data.fees.filter((f) => f.status === "pending").length;
-  const n2 = (k, label, ic, badge, also = []) => `<a class="${S.route.name === k || also.includes(S.route.name) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
+  const n2 = (k, label, ic, badge, also = []) => `<a class="${S.route.name === k || also.includes(S.route.name) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span class="nv">${label}${NAV_HINT[k] ? `<small>${NAV_HINT[k]}</small>` : ""}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
   const switcher = isManager() ? `<div class="portal-switch"><a class="${admin ? "" : "on"}" data-act="portalSwitch" data-p="pro">${icon("gavel")}المهني</a><a class="${admin ? "on" : ""}" data-act="portalSwitch" data-p="admin">${icon("building")}الإداري${npend ? `<i class="num">${npend}</i>` : ""}</a></div>` : "";
   const brand = `<div class="brand"><img class="mark" src="${LOGO.iconDark}" alt="ركز"><img class="word" src="${LOGO.textDark}" alt="ركز النظامية للمحاماة والاستشارات القانونية"></div>`;
   const meBox = `<div class="me">${S.me.avatar ? `<img src="${esc(S.me.avatar)}" alt="">` : `<span class="avatar">${esc(initials(me?.name || S.me.name))}</span>`}
@@ -242,6 +245,7 @@ function renderSide() {
   if (admin) {
     $(".side").innerHTML = `${brand}${switcher}<nav class="nav">
       ${n2("admin", "لوحة الإدارة", "dash")}
+      <div class="nav-sec">الاعتماد والمتابعة</div>
       ${n2("finreqs", "الطلبات المالية", "check", npend || "")}
       ${n2("finfiles", "الملفات المالية للقضايا", "cases", "", ["finfile"])}
       ${n2("finance", "المطالبات والفواتير", "receipt")}
@@ -256,21 +260,30 @@ function renderSide() {
     ${brand}${switcher}
     <nav class="nav">
       ${n("dashboard", "لوحة التحكم", "dash")}
-      ${n("cases", "القضايا", "cases")}
+      <div class="nav-sec">العمل اليومي</div>
       ${n("tasks", "المهام والتذكيرات", "tasks", late || "")}
-      ${n("assign", "طلبات الإسناد", "inbox", pend || "")}
-      ${n("najiz", "ناجز", "link")}
+      ${n("cases", "القضايا", "cases")}
       ${n("consults", "الاستشارات", "chat", S.data.consults.filter((x) => x.status !== "done" && (!myLid() || x.lawyerId === myLid())).length || "")}
-      <div class="nav-sec">الصياغة</div>
-      ${n("contracts", "العقود", "contract")}
+      ${n("assign", "طلبات الإسناد", "inbox", pend || "")}
+      <div class="nav-sec">الصياغة والمراجعة</div>
       ${n("drafting", "اللوائح وعروض الأتعاب", "docs")}
-      ${window.RAKZ_LAWS ? n("laws", "المكتبة النظامية", "book") : ""}
-      ${window.RAKZ_LAWS ? n("chat", "اسأل المكتبة", "bot") : ""}
-      <div class="nav-sec">العملاء</div>
+      ${n("contracts", "العقود", "contract")}
+      ${window.RAKZ_LAWS ? `<div class="nav-sec">البحث النظامي</div>${n("laws", "المكتبة النظامية", "book")}${n("chat", "اسأل المكتبة", "bot")}` : ""}
+      <div class="nav-sec">العملاء والربط</div>
       ${n("clients", "العملاء", "clients")}
+      ${n("najiz", "ناجز", "link")}
     </nav>${meBox}`;
 }
 
+/* one line under each menu item: what you go there to do */
+const NAV_HINT = {
+  dashboard: "ملخص يومك ومؤشرات الأداء", tasks: "الجلسات والمواعيد والمتأخر", cases: "ملفات القضايا ومرفقاتها وسجلها",
+  consults: "طلبات الرأي القانوني للعملاء", assign: "قضايا أُسندت إليك لتقبلها", drafting: "لوائح ومذكرات وعروض أتعاب",
+  contracts: "صياغة العقود ومراجعتها", laws: "الأنظمة واللوائح الرسمية", chat: "سؤال قانوني بإجابة موثقة",
+  clients: "بيانات العملاء وقضاياهم", najiz: "استيراد مستجدات القضايا من ناجز",
+  admin: "المؤشرات المالية والمقارنات", finreqs: "اعتماد أو رفض طلبات المحامين", finfiles: "مالية كل قضية حتى إقفالها",
+  finance: "المطالبات والفواتير الضريبية والقيود", team: "الأعضاء وصلاحياتهم", settings: "بيانات المكتب والخط والورق",
+};
 function renderBnav() {
   const b = $(".bnav"); if (!b) return;
   const r = S.route.name; const late = openTasks().filter((t) => isMine(t) && daysLeft(t.due) !== null && daysLeft(t.due) < 0).length;
@@ -297,10 +310,11 @@ function renderTop() {
     <button class="icon-btn menu-btn" data-act="menu" aria-label="القائمة">${icon("menu")}</button>
     <div class="search"><input id="gsearch" class="inp" placeholder="ابحث عن قضية، عميل، رقم ناجز…" autocomplete="off" value="${esc(S.ui.gq || "")}">${icon("search")}<div id="gsearch-pop"></div></div>
     <div class="spacer"></div>
+    <button class="icon-btn" data-act="help" aria-label="دليل الاستخدام" title="دليل الاستخدام والجولة التعريفية">${icon("help")}</button>
     <button class="icon-btn" data-act="theme" aria-label="${document.documentElement.dataset.theme === "dark" ? "الوضع الفاتح" : "الوضع الداكن"}" title="${document.documentElement.dataset.theme === "dark" ? "الوضع الفاتح" : "الوضع الداكن"}">${icon(document.documentElement.dataset.theme === "dark" ? "sun" : "moon")}</button>
     <button class="btn gold new-case" data-act="newCase">${icon("plus")}<span>قضية جديدة</span></button>
     <div style="position:relative"><button class="icon-btn" data-act="notif" aria-label="التنبيهات">${icon("bell")}${ns.length ? '<span class="dot"></span>' : ""}</button>
-      ${S.ui.notifOpen ? `<div class="notif-pop"><div class="list">${ns.length ? ns.map((x) => `<div class="li clickable" data-act="${x.act}" data-r="${x.r || ""}" data-id="${x.id || ""}"><span class="prio ${x.tone === "bad" ? "high" : x.tone === "warn" ? "normal" : "low"}"></span><div class="body"><div class="ttl">${esc(x.t)}</div><div class="meta">${esc(x.s)}</div></div></div>`).join("") : `<div class="empty">${icon("bell")}<span>لا توجد تنبيهات الآن</span></div>`}</div></div>` : ""}
+      ${S.ui.notifOpen ? `<div class="notif-pop"><div class="list">${ns.length ? ns.map((x) => `<div class="li clickable" data-act="${x.act}" data-r="${x.r || ""}" data-id="${x.id || ""}"><span class="prio ${x.tone === "bad" ? "high" : x.tone === "warn" ? "normal" : "low"}"></span><div class="body"><div class="ttl">${esc(x.t)}</div><div class="meta">${esc(x.s)}</div></div></div>`).join("") : `<div class="empty">${icon("bell")}<span>لا توجد تنبيهات الآن</span></div>`}</div>${pushRow()}</div>` : ""}
     </div>`;
 }
 function banners() {

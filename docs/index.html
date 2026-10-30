@@ -168,6 +168,41 @@
     async list() { return { assets: [], usage: {} }; },
   };
 
+  /* ---------- phone notifications (Web Push; table push_subs, function «push», docs/sw.js) ----------
+     iPhone shows web notifications only for a site added to the home screen and opened from its icon. */
+  if (sb && "serviceWorker" in navigator) {
+    const VAPID = "BJngIDWHuu62WM0mlrcSjksYqxwSoUjtX-VZic2m7rSlD5inQJfTMd92ZKmpgkuOZ0cJw3u6Cc0h1jd-eHm88vU";
+    const swReady = navigator.serviceWorker.register("sw.js").catch(() => null);
+    const key = (s) => { const r = atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(r, (c) => c.charCodeAt(0)); };
+    const ios = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    const current = async () => { const reg = await swReady; return reg ? reg.pushManager.getSubscription() : null; };
+    window.RAKZ_PUSH = {
+      ios, standalone,
+      /* on · off · denied · install (iPhone, not opened from the home screen) · unsupported */
+      async state() {
+        if (!("PushManager" in window) || !("Notification" in window)) return ios() && !standalone() ? "install" : "unsupported";
+        if (Notification.permission === "denied") return "denied";
+        return (await current()) && Notification.permission === "granted" ? "on" : "off";
+      },
+      async enable() {
+        const perm = await Notification.requestPermission(); // must be the first await: iOS needs the tap
+        if (perm !== "granted") throw err("denied");
+        const reg = (await swReady) || (await navigator.serviceWorker.ready);
+        const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key(VAPID) }));
+        const j = sub.toJSON();
+        const { error } = await sb.rpc("push_save", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_ua: navigator.userAgent });
+        if (error) throw err("save_failed", error.message);
+      },
+      async disable() { const sub = await current(); if (!sub) return; await sb.from("push_subs").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); },
+      async test() {
+        const r = await fetch(CFG.supabaseUrl + "/functions/v1/push", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session?.access_token, apikey: CFG.supabaseAnonKey }, body: JSON.stringify({ mode: "test" }) });
+        const j = await r.json().catch(() => ({})); if (!r.ok) throw err(j.error || "HTTP " + r.status); return j.sent || 0;
+      },
+    };
+    navigator.serviceWorker.addEventListener("message", (e) => { if (e.data?.rakzGo && typeof go === "function") go(e.data.rakzGo); });
+  }
+
   /* ---------- law library (tables law_sources / law_articles, RPC search_laws) ---------- */
   if (sb) window.RAKZ_LAWS = {
     async list() { const { data, error } = await sb.from("law_sources").select("*").order("ord", { nullsFirst: false }).order("name"); if (error) throw error; return data || []; },
@@ -970,7 +1005,7 @@ a > svg { width: 1em; height: 1em; vertical-align: -0.15em; }
    Glass — every surface is frosted glass over a soft bronze & navy wash
    ===================================================================== */
 :root {
-  --glass: rgba(255,255,255,.44); --glass-strong: rgba(255,255,255,.82); --glass-line: rgba(255,255,255,.78);
+  --glass: rgba(255,255,255,.44); --glass-strong: rgba(255,255,255,.95); --glass-line: rgba(255,255,255,.78);
   --glass-hi: inset 0 1px 0 rgba(255,255,255,.75); --glass-sheen: linear-gradient(150deg, rgba(255,255,255,.45), rgba(255,255,255,.06) 55%);
   --blur: saturate(1.6) blur(18px); --track: rgba(20,34,54,.07); --grid: rgba(20,34,54,.07);
   --wash: radial-gradient(900px 620px at 92% -8%, rgba(200,172,142,.55), transparent 62%), radial-gradient(760px 620px at -4% 34%, rgba(45,95,139,.24), transparent 62%), radial-gradient(720px 520px at 58% 108%, rgba(163,131,107,.26), transparent 62%);
@@ -978,7 +1013,7 @@ a > svg { width: 1em; height: 1em; vertical-align: -0.15em; }
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --glass: rgba(17,28,42,.55); --glass-strong: rgba(15,25,38,.88); --glass-line: rgba(255,255,255,.08);
+    --glass: rgba(17,28,42,.55); --glass-strong: rgba(15,25,38,.96); --glass-line: rgba(255,255,255,.08);
     --glass-hi: inset 0 1px 0 rgba(255,255,255,.06); --glass-sheen: linear-gradient(150deg, rgba(255,255,255,.06), rgba(255,255,255,0) 55%);
     --track: rgba(255,255,255,.07); --grid: rgba(255,255,255,.06);
     --wash: radial-gradient(900px 620px at 92% -8%, rgba(200,172,142,.16), transparent 62%), radial-gradient(760px 620px at -4% 34%, rgba(77,130,190,.16), transparent 62%), radial-gradient(720px 520px at 58% 108%, rgba(163,131,107,.12), transparent 62%);
@@ -986,7 +1021,7 @@ a > svg { width: 1em; height: 1em; vertical-align: -0.15em; }
   }
 }
 :root[data-theme="dark"] {
-  --glass: rgba(17,28,42,.55); --glass-strong: rgba(15,25,38,.88); --glass-line: rgba(255,255,255,.08);
+  --glass: rgba(17,28,42,.55); --glass-strong: rgba(15,25,38,.96); --glass-line: rgba(255,255,255,.08);
   --glass-hi: inset 0 1px 0 rgba(255,255,255,.06); --glass-sheen: linear-gradient(150deg, rgba(255,255,255,.06), rgba(255,255,255,0) 55%);
   --track: rgba(255,255,255,.07); --grid: rgba(255,255,255,.06);
   --wash: radial-gradient(900px 620px at 92% -8%, rgba(200,172,142,.16), transparent 62%), radial-gradient(760px 620px at -4% 34%, rgba(77,130,190,.16), transparent 62%), radial-gradient(720px 520px at 58% 108%, rgba(163,131,107,.12), transparent 62%);
@@ -1078,6 +1113,42 @@ button.stat { cursor: pointer; } button.stat:hover { transform: translateY(-2px)
 .hero .btn:not(.gold):hover { background: rgba(255,255,255,.14); border-color: var(--accent-2); }
 .donut-wrap { justify-content: center; }
 .legend.col { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 7px 16px; }
+
+/* ---------- menus: a hint under each item ---------- */
+.nav a .nv { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.35; }
+.nav a .nv small { font-size: 11px; font-weight: 400; color: var(--nav-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.nav a.on .nv small { color: rgba(237,230,223,.7); }
+.nav a { padding-block: 8px; }
+.nav-sec { padding-top: 14px; }
+
+/* ---------- phone notifications ---------- */
+.push-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.push-row > svg { width: 20px; height: 20px; color: var(--accent-ink); flex: none; }
+.push-row .grow { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; min-width: 140px; }
+.card .push-row { border-top: 0; }
+.how ol { margin: 6px 0 0; padding-inline-start: 22px; display: flex; flex-direction: column; gap: 6px; }
+.how svg { width: 15px; height: 15px; vertical-align: -3px; color: var(--accent-ink); }
+
+/* ---------- usage guide ---------- */
+.howto { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; margin-top: 10px; }
+.howto-i { display: flex; gap: 12px; align-items: center; text-align: start; padding: 12px; border-radius: 14px; border: 1px solid var(--glass-line); background: var(--glass-sheen), var(--glass); color: var(--ink); font: inherit; cursor: pointer; transition: transform .15s, box-shadow .15s, border-color .15s; }
+.howto-i:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); border-color: var(--accent-2); }
+.howto-i .law-ic { width: 38px; height: 38px; border-radius: 12px; } .howto-i .law-ic svg { width: 18px; height: 18px; }
+.howto-i b { display: block; font-size: 13.5px; } .howto-i small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.5; margin-top: 2px; }
+
+/* ---------- first-visit tour ---------- */
+.tour { position: fixed; inset: 0; z-index: 400; }
+.tour-hole { position: fixed; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(8,14,24,.62), 0 0 0 2px var(--accent-2), 0 0 24px 4px rgba(200,172,142,.45); transition: top .3s, left .3s, width .3s, height .3s; pointer-events: none; }
+.tour-hole.none { top: 50%; left: 50%; width: 0; height: 0; box-shadow: 0 0 0 9999px rgba(8,14,24,.62); }
+.tour-card { position: fixed; width: min(340px, calc(100vw - 32px)); background: var(--glass-strong); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); border: 1px solid var(--glass-line); border-radius: 18px; padding: 18px 18px 14px; box-shadow: 0 30px 70px -20px rgba(0,0,0,.5); color: var(--ink); animation: rise .3s both; }
+.tour-card h3 { margin: 4px 0 6px; font-family: var(--f-display); font-size: 21px; }
+.tour-card p { margin: 0 0 12px; color: var(--ink-2); line-height: 1.8; font-size: 13.5px; }
+.tour-n { font-size: 11.5px; color: var(--accent-ink); font-weight: 700; }
+.tour-dots { display: flex; gap: 4px; margin-bottom: 12px; } .tour-dots i { width: 6px; height: 6px; border-radius: 99px; background: var(--line-2); transition: width .2s; } .tour-dots i.on { width: 18px; background: var(--gold-grad); }
+.tour-push { margin: -2px 0 12px; }
+@media (prefers-reduced-motion: reduce) { .tour-hole { transition: none; } .tour-card { animation: none; } }
+
+@media (max-width: 860px) { .notif-pop { position: fixed; top: calc(60px + env(safe-area-inset-top, 0px)); left: 12px; right: 12px; width: auto; } }
 
 </style>
 <div id="app" dir="rtl" lang="ar">
@@ -1183,6 +1254,9 @@ const lsSet = (k, v) => { try { localStorage.setItem("rakz:" + k, JSON.stringify
 
 /* ---------- icons ---------- */
 const IC = {
+  play: '<path d="M8 5.5v13l10-6.5z"/>',
+  share: '<path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M6 11v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6"/><path d="M12 17h.01"/>',
   up: '<path d="M7 14l5-5 5 5"/>',
   down: '<path d="M7 10l5 5 5-5"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
@@ -1319,10 +1393,10 @@ function afterRender() { while (after.length) { try { after.shift()(); } catch (
 function renderSide() {
   const pend = pendingForMe().length;
   const late = openTasks().filter((t) => isMine(t) && daysLeft(t.due) !== null && daysLeft(t.due) < 0).length;
-  const n = (k, label, ic, badge) => `<a class="${S.route.name === k || (k === "cases" && S.route.name === "case") || (k === "drafting" && S.route.name === "doc" && !["agreement", "creview", "invoice"].includes(byId(S.data.docs, S.route.id)?.kind)) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") || (k === "consults" && S.route.name === "consult") || (k === "contracts" && (S.route.name === "creview" || (S.route.name === "doc" && ["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)))) ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
+  const n = (k, label, ic, badge) => `<a class="${S.route.name === k || (k === "cases" && S.route.name === "case") || (k === "drafting" && S.route.name === "doc" && !["agreement", "creview", "invoice"].includes(byId(S.data.docs, S.route.id)?.kind)) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") || (k === "consults" && S.route.name === "consult") || (k === "contracts" && (S.route.name === "creview" || (S.route.name === "doc" && ["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)))) ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span class="nv">${label}${NAV_HINT[k] ? `<small>${NAV_HINT[k]}</small>` : ""}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
   const me = myLawyer(); const admin = S.portal === "admin" && isManager();
   const npend = (S.data.finreq || []).filter((r) => (r.status || "pending") === "pending").length + S.data.fees.filter((f) => f.status === "pending").length;
-  const n2 = (k, label, ic, badge, also = []) => `<a class="${S.route.name === k || also.includes(S.route.name) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
+  const n2 = (k, label, ic, badge, also = []) => `<a class="${S.route.name === k || also.includes(S.route.name) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span class="nv">${label}${NAV_HINT[k] ? `<small>${NAV_HINT[k]}</small>` : ""}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
   const switcher = isManager() ? `<div class="portal-switch"><a class="${admin ? "" : "on"}" data-act="portalSwitch" data-p="pro">${icon("gavel")}المهني</a><a class="${admin ? "on" : ""}" data-act="portalSwitch" data-p="admin">${icon("building")}الإداري${npend ? `<i class="num">${npend}</i>` : ""}</a></div>` : "";
   const brand = `<div class="brand"><img class="mark" src="${LOGO.iconDark}" alt="ركز"><img class="word" src="${LOGO.textDark}" alt="ركز النظامية للمحاماة والاستشارات القانونية"></div>`;
   const meBox = `<div class="me">${S.me.avatar ? `<img src="${esc(S.me.avatar)}" alt="">` : `<span class="avatar">${esc(initials(me?.name || S.me.name))}</span>`}
@@ -1332,6 +1406,7 @@ function renderSide() {
   if (admin) {
     $(".side").innerHTML = `${brand}${switcher}<nav class="nav">
       ${n2("admin", "لوحة الإدارة", "dash")}
+      <div class="nav-sec">الاعتماد والمتابعة</div>
       ${n2("finreqs", "الطلبات المالية", "check", npend || "")}
       ${n2("finfiles", "الملفات المالية للقضايا", "cases", "", ["finfile"])}
       ${n2("finance", "المطالبات والفواتير", "receipt")}
@@ -1346,21 +1421,30 @@ function renderSide() {
     ${brand}${switcher}
     <nav class="nav">
       ${n("dashboard", "لوحة التحكم", "dash")}
-      ${n("cases", "القضايا", "cases")}
+      <div class="nav-sec">العمل اليومي</div>
       ${n("tasks", "المهام والتذكيرات", "tasks", late || "")}
-      ${n("assign", "طلبات الإسناد", "inbox", pend || "")}
-      ${n("najiz", "ناجز", "link")}
+      ${n("cases", "القضايا", "cases")}
       ${n("consults", "الاستشارات", "chat", S.data.consults.filter((x) => x.status !== "done" && (!myLid() || x.lawyerId === myLid())).length || "")}
-      <div class="nav-sec">الصياغة</div>
-      ${n("contracts", "العقود", "contract")}
+      ${n("assign", "طلبات الإسناد", "inbox", pend || "")}
+      <div class="nav-sec">الصياغة والمراجعة</div>
       ${n("drafting", "اللوائح وعروض الأتعاب", "docs")}
-      ${window.RAKZ_LAWS ? n("laws", "المكتبة النظامية", "book") : ""}
-      ${window.RAKZ_LAWS ? n("chat", "اسأل المكتبة", "bot") : ""}
-      <div class="nav-sec">العملاء</div>
+      ${n("contracts", "العقود", "contract")}
+      ${window.RAKZ_LAWS ? `<div class="nav-sec">البحث النظامي</div>${n("laws", "المكتبة النظامية", "book")}${n("chat", "اسأل المكتبة", "bot")}` : ""}
+      <div class="nav-sec">العملاء والربط</div>
       ${n("clients", "العملاء", "clients")}
+      ${n("najiz", "ناجز", "link")}
     </nav>${meBox}`;
 }
 
+/* one line under each menu item: what you go there to do */
+const NAV_HINT = {
+  dashboard: "ملخص يومك ومؤشرات الأداء", tasks: "الجلسات والمواعيد والمتأخر", cases: "ملفات القضايا ومرفقاتها وسجلها",
+  consults: "طلبات الرأي القانوني للعملاء", assign: "قضايا أُسندت إليك لتقبلها", drafting: "لوائح ومذكرات وعروض أتعاب",
+  contracts: "صياغة العقود ومراجعتها", laws: "الأنظمة واللوائح الرسمية", chat: "سؤال قانوني بإجابة موثقة",
+  clients: "بيانات العملاء وقضاياهم", najiz: "استيراد مستجدات القضايا من ناجز",
+  admin: "المؤشرات المالية والمقارنات", finreqs: "اعتماد أو رفض طلبات المحامين", finfiles: "مالية كل قضية حتى إقفالها",
+  finance: "المطالبات والفواتير الضريبية والقيود", team: "الأعضاء وصلاحياتهم", settings: "بيانات المكتب والخط والورق",
+};
 function renderBnav() {
   const b = $(".bnav"); if (!b) return;
   const r = S.route.name; const late = openTasks().filter((t) => isMine(t) && daysLeft(t.due) !== null && daysLeft(t.due) < 0).length;
@@ -1387,10 +1471,11 @@ function renderTop() {
     <button class="icon-btn menu-btn" data-act="menu" aria-label="القائمة">${icon("menu")}</button>
     <div class="search"><input id="gsearch" class="inp" placeholder="ابحث عن قضية، عميل، رقم ناجز…" autocomplete="off" value="${esc(S.ui.gq || "")}">${icon("search")}<div id="gsearch-pop"></div></div>
     <div class="spacer"></div>
+    <button class="icon-btn" data-act="help" aria-label="دليل الاستخدام" title="دليل الاستخدام والجولة التعريفية">${icon("help")}</button>
     <button class="icon-btn" data-act="theme" aria-label="${document.documentElement.dataset.theme === "dark" ? "الوضع الفاتح" : "الوضع الداكن"}" title="${document.documentElement.dataset.theme === "dark" ? "الوضع الفاتح" : "الوضع الداكن"}">${icon(document.documentElement.dataset.theme === "dark" ? "sun" : "moon")}</button>
     <button class="btn gold new-case" data-act="newCase">${icon("plus")}<span>قضية جديدة</span></button>
     <div style="position:relative"><button class="icon-btn" data-act="notif" aria-label="التنبيهات">${icon("bell")}${ns.length ? '<span class="dot"></span>' : ""}</button>
-      ${S.ui.notifOpen ? `<div class="notif-pop"><div class="list">${ns.length ? ns.map((x) => `<div class="li clickable" data-act="${x.act}" data-r="${x.r || ""}" data-id="${x.id || ""}"><span class="prio ${x.tone === "bad" ? "high" : x.tone === "warn" ? "normal" : "low"}"></span><div class="body"><div class="ttl">${esc(x.t)}</div><div class="meta">${esc(x.s)}</div></div></div>`).join("") : `<div class="empty">${icon("bell")}<span>لا توجد تنبيهات الآن</span></div>`}</div></div>` : ""}
+      ${S.ui.notifOpen ? `<div class="notif-pop"><div class="list">${ns.length ? ns.map((x) => `<div class="li clickable" data-act="${x.act}" data-r="${x.r || ""}" data-id="${x.id || ""}"><span class="prio ${x.tone === "bad" ? "high" : x.tone === "warn" ? "normal" : "low"}"></span><div class="body"><div class="ttl">${esc(x.t)}</div><div class="meta">${esc(x.s)}</div></div></div>`).join("") : `<div class="empty">${icon("bell")}<span>لا توجد تنبيهات الآن</span></div>`}</div>${pushRow()}</div>` : ""}
     </div>`;
 }
 function banners() {
@@ -5439,6 +5524,145 @@ ${ctx || "(لم يُعثر على نصوص مطابقة في المكتبة)"}
   finally { S.chatBusy = null; render(); setTimeout(() => $("#chat-q")?.focus(), 50); }
 };
 
+/* ============ Rakz — guide: first-visit tour, usage guide («؟»), phone notifications ============ */
+
+/* ---------- phone notifications ---------- */
+async function refreshPush() { const st = window.RAKZ_PUSH ? await window.RAKZ_PUSH.state().catch(() => "unsupported") : "unsupported"; if (st !== S.push) { S.push = st; scheduleRender(); } }
+const PUSH_TXT = {
+  on: ["مفعّلة على هذا الجهاز", "ok"], off: ["غير مفعّلة على هذا الجهاز", "warn"], denied: ["محظورة من إعدادات الجهاز", "bad"],
+  install: ["تحتاج إضافة المنصة إلى الشاشة الرئيسية", "warn"], unsupported: ["غير مدعومة في هذا المتصفح", "plain"],
+};
+function pushRow() {
+  if (!window.RAKZ_PUSH) return "";
+  const st = S.push || "off"; const [t, c] = PUSH_TXT[st] || PUSH_TXT.off;
+  return `<div class="push-row">${icon("bell")}<div class="grow"><b>تنبيهات الجوال</b><span class="pill ${c}">${t}</span></div>
+    ${st === "on" ? `<button class="btn sm" data-act="pushTest">تجربة</button><button class="btn sm ghost" data-act="pushOff">إيقاف</button>` : st === "off" ? `<button class="btn sm gold" data-act="pushOn">تفعيل</button>` : st === "install" || st === "denied" ? `<button class="btn sm" data-act="pushHow">الطريقة</button>` : ""}</div>`;
+}
+A.pushOn = async () => {
+  try { await window.RAKZ_PUSH.enable(); S.push = "on"; toast("فُعّلت التنبيهات على هذا الجهاز"); if (S.tour) drawTour(); }
+  catch (e) { S.push = await window.RAKZ_PUSH.state().catch(() => "off"); toast(e.code === "denied" ? "لم يُسمح بالتنبيهات. فعّلها من إعدادات الجهاز ثم أعد المحاولة." : "تعذّر التفعيل: " + (e.message || e.code || ""), true); }
+  render();
+};
+A.pushOff = async () => { await window.RAKZ_PUSH.disable().catch(() => {}); S.push = "off"; toast("أُوقفت التنبيهات على هذا الجهاز"); render(); };
+A.pushTest = async () => {
+  try { const n = await window.RAKZ_PUSH.test(); toast(n ? "أُرسل تنبيه تجريبي، سيصلك خلال ثوانٍ" : "لم يُعثر على جهاز مفعّل. أعد التفعيل.", !n); }
+  catch (e) { toast(e.code === "not_configured" ? "خدمة التنبيهات لم تُفعّل في الخادم بعد." : "تعذّر الإرسال: " + (e.message || e.code), true); }
+};
+A.pushHow = () => modal("تفعيل التنبيهات على الجوال", `<div class="stack" style="gap:14px">
+  <p class="muted" style="margin:0">تصلك تنبيهات طلبات الإسناد والمهام الجديدة والطلبات المالية، وملخص كل صباح بجلسات اليوم والغد والمتأخر.</p>
+  <div class="how"><b>آيفون (iOS 16.4 فأحدث)</b><ol>
+    <li>افتح <span class="num">sys.rakzlaw.sa</span> في متصفح <b>Safari</b>.</li>
+    <li>اضغط زر المشاركة ${icon("share")} أسفل الشاشة، ثم «<b>إضافة إلى الشاشة الرئيسية</b>».</li>
+    <li>افتح «ركز» من أيقونتها في الشاشة الرئيسية، وسجّل الدخول.</li>
+    <li>اضغط الجرس ${icon("bell")} أعلى الصفحة ثم «<b>تفعيل</b>»، ووافق على السماح بالتنبيهات.</li></ol></div>
+  <div class="how"><b>أندرويد</b><ol>
+    <li>افتح المنصة في <b>Chrome</b>، ثم من القائمة ⋮ اختر «<b>تثبيت التطبيق</b>» أو «إضافة إلى الشاشة الرئيسية».</li>
+    <li>اضغط الجرس ثم «تفعيل» ووافق على السماح.</li></ol></div>
+  ${S.push === "denied" ? `<div class="banner warn"><div class="grow">التنبيهات محظورة لهذا الموقع. افتح إعدادات الجهاز ← الإشعارات ← ركز، واسمح بها، ثم ارجع واضغط «تفعيل».</div></div>` : ""}</div>`,
+  `<button class="btn primary" data-act="closeModal">تم</button>`);
+
+/* ---------- usage guide: what do you want to do, and where ---------- */
+const HOWTO = [
+  { t: "فتح قضية جديدة", w: "زر «قضية جديدة» أعلى الصفحة", act: "newCase", ic: "plus" },
+  { t: "إضافة جلسة أو موعد مذكرة", w: "المهام والتذكيرات ← «مهمة أو موعد»", act: "newTask", ic: "cal" },
+  { t: "رفع مستندات قضية ليقرأها المساعد", w: "القضايا ← افتح القضية ← «رفع مرفق»", r: "cases", ic: "upload" },
+  { t: "تحديث قضية من ناجز", w: "ناجز ← الصق النص أو ارفع الملف", r: "najiz", ic: "link" },
+  { t: "كتابة لائحة اعتراضية أو مذكرة", w: "اللوائح وعروض الأتعاب ← اختر النوع والقضية", r: "drafting", ic: "docs" },
+  { t: "صياغة عقد أو مراجعته", w: "العقود ← «صياغة» أو «مراجعة عقد»", r: "contracts", ic: "contract" },
+  { t: "البحث عن مادة نظامية", w: "المكتبة النظامية ← ابحث أو افتح النظام", r: "laws", ic: "book", need: "laws" },
+  { t: "سؤال قانوني بإجابة موثقة", w: "اسأل المكتبة، أو زر المساعد العائم", r: "chat", ic: "bot", need: "laws" },
+  { t: "إرسال تقرير مستجدات للعميل", w: "القضية ← تبويب «التقارير» ← واتساب أو بريد", r: "cases", ic: "wa" },
+  { t: "تسجيل مصروف أو دفعة استلمتها", w: "القضية ← بطاقة «الطلبات المالية» ← طلب جديد (يعتمده المدير)", r: "cases", ic: "coin" },
+  { t: "قبول قضية أُسندت إليك", w: "طلبات الإسناد", r: "assign", ic: "inbox" },
+  { t: "اعتماد طلب مالي", w: "النظام الإداري ← الطلبات المالية", r: "finreqs", ic: "check", mgr: true },
+  { t: "إصدار مطالبة أو فاتورة ضريبية", w: "النظام الإداري ← المطالبات والفواتير", r: "finance", ic: "receipt", mgr: true },
+  { t: "إقفال الملف المالي لقضية", w: "النظام الإداري ← الملفات المالية ← القضية", r: "finfiles", ic: "cases", mgr: true },
+  { t: "إضافة عضو إلى الفريق", w: "النظام الإداري ← فريق العمل", r: "team", ic: "team", mgr: true },
+];
+A.help = () => {
+  const list = HOWTO.filter((h) => (!h.mgr || isManager()) && (h.need !== "laws" || window.RAKZ_LAWS));
+  modal("دليل الاستخدام", `<div class="stack" style="gap:16px">
+    <div class="banner gold"><div class="grow"><b>جولة تعريفية</b>دقيقة واحدة تعرّفك على مكان كل قسم في ${S.portal === "admin" ? "النظام الإداري" : "النظام المهني"}.</div><button class="btn gold" data-act="tourStart">${icon("play")}ابدأ الجولة</button></div>
+    <div><b>ماذا تريد أن تفعل؟</b><div class="howto">${list.map((h) => `<button class="howto-i" data-act="howGo" ${h.act ? `data-do="${h.act}"` : `data-r="${h.r}"`}><span class="law-ic">${icon(h.ic)}</span><span><b>${h.t}</b><small>${h.w}</small></span></button>`).join("")}</div></div>
+    ${window.RAKZ_PUSH ? `<div class="card" style="padding:4px 16px">${pushRow()}</div>` : ""}</div>`, "", true);
+};
+A.howGo = (el) => { closeModal(); if (el.dataset.do) return A[el.dataset.do](el); go(el.dataset.r); };
+
+/* ---------- first-visit tour ---------- */
+const mobile = () => matchMedia("(max-width: 860px)").matches;
+function tourSteps(kind) {
+  const m = mobile(); const nav = (r) => (m ? `.bnav [data-r="${r}"]` : `.side [data-r="${r}"]`); const more = `.bnav [data-act="menu"]`;
+  const hello = { t: kind === "admin" ? "النظام الإداري" : `أهلًا بك في منصة ركز${myLawyer() ? "، " + myLawyer().name.split(" ")[0] : ""}`, d: kind === "admin" ? "هنا المالية كلها: كل حركة يرفعها المحامون تنتظر اعتمادك، وكل قضية لها ملف مالي يبقى مفتوحًا حتى تقفله." : "جولة قصيرة تعرّفك على مكان كل شيء. تستطيع إعادتها في أي وقت من زر «؟» أعلى الصفحة." };
+  const end = { sel: '[data-act="help"]', t: "الدليل دائمًا هنا", d: "زر «؟» يفتح دليل «ماذا تريد أن تفعل؟» ويعيد هذه الجولة.", push: true };
+  if (kind === "admin") return [hello,
+    { sel: ".portal-switch", t: "التبديل بين النظامين", d: "«المهني» للقضايا والعمل القانوني، و«الإداري» للمالية والاعتمادات.", skipMobile: true },
+    { sel: nav("admin"), t: "لوحة الإدارة", d: "المحصّل والمستحق ومقارنة هذا الشهر بالماضي وبالعام الماضي، وأعمار المستحقات وأكبر العملاء." },
+    { sel: nav("finreqs"), t: "الطلبات المالية", d: "مصروفات المحامين والدفعات المستلمة واقتراحات الأتعاب. لا يُسجَّل أي مبلغ إلا بعد اعتمادك هنا." },
+    { sel: nav("finfiles"), t: "الملفات المالية للقضايا", d: "لكل قضية أتعابها وما فوتر وحُصّل والمستحق. أقفل الملف بعد تسوية المستحقات." },
+    { sel: nav("finance"), t: "المطالبات والفواتير", d: "إصدار المطالبات والفواتير الضريبية والإشعارات الدائنة، والقيود وكشوف العملاء." },
+    m ? { sel: more, t: "المزيد", d: "العملاء وفريق العمل والإعدادات، والتبديل إلى النظام المهني." } : { sel: nav("team"), t: "فريق العمل والإعدادات", d: "أضف الأعضاء بأدوارهم، وبيانات المكتب والرقم الضريبي والخط والورق الرسمي." },
+    end];
+  return [hello,
+    isManager() && !m ? { sel: ".portal-switch", t: "نظامان منفصلان", d: "أنت الآن في «المهني» للعمل القانوني اليومي. المالية والاعتمادات في «الإداري»." } : null,
+    { sel: nav("dashboard"), t: "لوحة التحكم", d: "ملخص يومك: الجلسات القادمة، وما يتطلب انتباهك، ومقارنة هذا الشهر بالماضي." },
+    { sel: nav("tasks"), t: "المهام والتذكيرات", d: "الجلسات ومواعيد المذكرات والمتطلبات. الرقم الأحمر على القسم يعني مهام متأخرة عليك." },
+    { sel: nav("cases"), t: "القضايا", d: "كل قضية بملفها: الأطراف والجلسات والمرفقات والسجل وتقارير العميل والطلبات المالية." },
+    { sel: nav("consults"), t: "الاستشارات", d: "طلبات الرأي القانوني: صياغة الرأي بالمساعد، وتحويل الاستشارة إلى قضية." },
+    m ? { sel: more, t: "بقية الأقسام في «المزيد»", d: "اللوائح والعقود والمكتبة النظامية والعملاء وناجز وطلبات الإسناد." } : null,
+    m ? null : { sel: nav("drafting"), t: "الصياغة والمراجعة", d: "اللوائح الاعتراضية والمذكرات وعروض الأتعاب، والعقود صياغةً ومراجعةً بالعربية والإنجليزية." },
+    m || !window.RAKZ_LAWS ? null : { sel: nav("laws"), t: "البحث النظامي", d: "الأنظمة ولوائحها من المصادر الرسمية، و«اسأل المكتبة» لسؤال قانوني بإجابة موثقة بالمواد." },
+    m ? null : { sel: nav("najiz"), t: "ناجز", d: "الصق صفحة القضية من ناجز أو ارفعها ليستخرج المساعد الجلسات والقرارات ويحدّث القضية." },
+    { sel: "#gsearch", t: "البحث السريع", d: "ابحث عن أي قضية أو عميل أو رقم ناجز من أي صفحة.", skipMobile: true },
+    { sel: ".new-case", t: "قضية جديدة", d: "افتح قضية من أي مكان، وأسندها لمحامٍ من الفريق." },
+    { sel: "#chat-fab", t: "المساعد", d: "اسأل المكتبة النظامية من أي صفحة." },
+    { sel: '[data-act="notif"]', t: "التنبيهات", d: "طلبات الإسناد والمواعيد القريبة والمتأخر. ومنها تفعّل تنبيهات الجوال." },
+    end].filter(Boolean);
+}
+const tourKey = (kind) => `tour.${kind}.${(S.me?.email || "").toLowerCase()}`;
+function maybeTour() {
+  if (S.tour || !S.booted || !S.loaded.lawyers || $("#modal")) return;
+  const kind = S.route.name === "admin" ? "admin" : S.route.name === "dashboard" ? "pro" : null;
+  if (!kind || lsGet(tourKey(kind), false)) return;
+  setTimeout(() => { if (!S.tour && !$("#modal") && (S.route.name === "admin" ? "admin" : S.route.name === "dashboard" ? "pro" : null) === kind) startTour(kind); }, 900);
+}
+A.tourStart = () => { closeModal(); startTour(S.portal === "admin" && isManager() ? "admin" : "pro"); };
+function startTour(kind) {
+  const visible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.right > 0 && r.left < innerWidth && getComputedStyle(el).visibility !== "hidden"; };
+  const steps = tourSteps(kind).filter((s) => !(s.skipMobile && mobile())).filter((s) => !s.sel || visible($(s.sel)));
+  S.tour = { kind, steps, i: 0 }; lsSet(tourKey(kind), true);
+  let box = $("#tour"); if (!box) { box = document.createElement("div"); box.id = "tour"; box.className = "tour"; document.body.appendChild(box); }
+  drawTour();
+}
+function drawTour() {
+  const T = S.tour, box = $("#tour"); if (!T || !box) return;
+  const s = T.steps[T.i]; const el = s.sel ? $(s.sel) : null;
+  if (el && !el.closest(".side, .bnav, .topbar") && getComputedStyle(el).position !== "fixed") el.scrollIntoView({ block: "center", behavior: "instant" });
+  const r = el ? el.getBoundingClientRect() : null; const pad = 6;
+  const last = T.i === T.steps.length - 1;
+  box.innerHTML = `<div class="tour-hole${r ? "" : " none"}" style="${r ? `top:${r.top - pad}px;left:${r.left - pad}px;width:${r.width + pad * 2}px;height:${r.height + pad * 2}px` : ""}"></div>
+    <div class="tour-card" role="dialog" aria-live="polite"><div class="tour-n num">${T.i + 1} / ${T.steps.length}</div><h3>${esc(s.t)}</h3><p>${esc(s.d)}</p>
+      ${s.push && window.RAKZ_PUSH && S.push !== "on" && S.push !== "unsupported" ? `<div class="tour-push">${S.push === "off" ? `<button class="btn gold sm" data-act="pushOn">${icon("bell")}فعّل تنبيهات الجوال</button>` : `<button class="btn sm" data-act="pushHow">${icon("bell")}كيف أفعّل تنبيهات الجوال؟</button>`}</div>` : ""}
+      <div class="tour-dots">${T.steps.map((_, k) => `<i class="${k === T.i ? "on" : ""}"></i>`).join("")}</div>
+      <div class="row"><button class="btn primary sm" data-act="tourNext">${last ? "إنهاء" : "التالي"}</button>${T.i ? `<button class="btn sm" data-act="tourPrev">السابق</button>` : ""}<span class="grow"></span>${last ? "" : `<button class="btn ghost sm" data-act="tourEnd">تخطي الجولة</button>`}</div></div>`;
+  const card = box.querySelector(".tour-card"); const cw = card.offsetWidth, ch = card.offsetHeight, vw = innerWidth, vh = innerHeight, g = 14;
+  let top, left;
+  if (!r) { top = (vh - ch) / 2; left = (vw - cw) / 2; }
+  else if (el.closest(".side") && r.left - g - cw > 8) { top = Math.min(Math.max(8, r.top + r.height / 2 - ch / 2), vh - ch - 8); left = r.left - g - cw; }
+  else if (r.bottom + g + ch < vh - 8) { top = r.bottom + g; left = r.left + r.width / 2 - cw / 2; }
+  else if (r.top - g - ch > 8) { top = r.top - g - ch; left = r.left + r.width / 2 - cw / 2; }
+  else { top = Math.min(Math.max(8, r.top + r.height / 2 - ch / 2), vh - ch - 8); left = r.left - g - cw > 8 ? r.left - g - cw : r.right + g; }
+  card.style.top = Math.max(8, top) + "px"; card.style.left = Math.min(Math.max(8, left), vw - cw - 8) + "px";
+}
+A.tourNext = () => { const T = S.tour; if (!T) return; if (T.i >= T.steps.length - 1) return A.tourEnd(); T.i++; drawTour(); };
+A.tourPrev = () => { const T = S.tour; if (!T || !T.i) return; T.i--; drawTour(); };
+A.tourEnd = () => { const k = S.tour?.kind; S.tour = null; $("#tour")?.remove(); if (k === "pro" && S.push === "off" && mobile()) toast("تستطيع تفعيل تنبيهات الجوال من الجرس أعلى الصفحة"); };
+document.addEventListener("keydown", (e) => {
+  if (!S.tour) return;
+  if (e.key === "Escape") A.tourEnd(); else if (e.key === "ArrowLeft" || e.key === "Enter") A.tourNext(); else if (e.key === "ArrowRight") A.tourPrev();
+});
+addEventListener("resize", () => { if (S.tour) drawTour(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && S.booted) refreshPush(); });
+
 /* ============ Rakz — boot ============ */
 after.push(() => {});
 const _render = render;
@@ -5448,6 +5672,7 @@ render = function () {
   let fab = document.getElementById("chat-fab"); const show = S.booted && window.RAKZ_LAWS && S.caps.sample && S.route.name !== "chat";
   if (show && !fab) { fab = document.createElement("button"); fab.id = "chat-fab"; fab.className = "chat-fab"; fab.title = "اسأل المكتبة"; fab.setAttribute("aria-label", "اسأل المكتبة"); fab.dataset.act = "go"; fab.dataset.r = "chat"; fab.innerHTML = icon("bot"); document.body.appendChild(fab); }
   if (fab) fab.hidden = !show;
+  maybeTour();
 };
 
 async function boot() {
@@ -5463,7 +5688,7 @@ async function boot() {
     const me = await user.me();
     S.me = { id: me.id, name: me.name || "", email: me.email || "", avatar: me.avatarUrl, isOwner: me.isOwner, canEdit: me.canEdit, canWrite: await user.can("data.write") };
   }
-  S.booted = true;
+  S.booted = true; refreshPush();
   if (db) subscribeAll(); else COLL.forEach((c) => (S.loaded[c] = true));
   render();
 }

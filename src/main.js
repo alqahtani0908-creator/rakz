@@ -7,6 +7,7 @@ render = function () {
   let fab = document.getElementById("chat-fab"); const show = S.booted && window.RAKZ_LAWS && S.caps.sample && S.route.name !== "chat";
   if (show && !fab) { fab = document.createElement("button"); fab.id = "chat-fab"; fab.className = "chat-fab"; fab.title = "اسأل المكتبة"; fab.setAttribute("aria-label", "اسأل المكتبة"); fab.dataset.act = "go"; fab.dataset.r = "chat"; fab.innerHTML = icon("bot"); document.body.appendChild(fab); }
   if (fab) fab.hidden = !show;
+  maybeTour();
 };
 
 async function boot() {
@@ -22,7 +23,7 @@ async function boot() {
     const me = await user.me();
     S.me = { id: me.id, name: me.name || "", email: me.email || "", avatar: me.avatarUrl, isOwner: me.isOwner, canEdit: me.canEdit, canWrite: await user.can("data.write") };
   }
-  S.booted = true;
+  S.booted = true; refreshPush();
   if (db) subscribeAll(); else COLL.forEach((c) => (S.loaded[c] = true));
   render();
 }
