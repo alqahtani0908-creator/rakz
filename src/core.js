@@ -35,7 +35,7 @@ const ROLES = { manager: "مدير", partner: "شريك", lawyer: "محامٍ", 
 
 const S = {
   caps: {}, me: { id: null, name: "", avatar: "", isOwner: false, canEdit: false, canWrite: null },
-  data: { lawyers: [], clients: [], cases: [], tasks: [], docs: [], consults: [], finance: [], fees: [], journal: [] }, loaded: {},
+  data: { lawyers: [], clients: [], cases: [], tasks: [], docs: [], consults: [], finance: [], fees: [], journal: [], finreq: [] }, loaded: {}, portal: "pro",
   firm: { ...FIRM_DEFAULTS }, templates: {},
   route: { name: "dashboard", id: null, tab: null },
   caseSub: null, caseLog: [], caseFiles: [], caseReports: [], caseLoadedFor: null,
@@ -142,7 +142,7 @@ const IC = {
 const icon = (n, cls) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"${cls ? ` class="${cls}"` : ""} aria-hidden="true">${IC[n] || ""}</svg>`;
 
 /* ---------- data layer ---------- */
-const COLL = ["lawyers", "clients", "cases", "tasks", "docs", "consults", "finance", "fees", "journal"];
+const COLL = ["lawyers", "clients", "cases", "tasks", "docs", "consults", "finance", "fees", "journal", "finreq"];
 function canWrite() { return !!S.caps.db && S.me.canWrite !== false; }
 function guardWrite() { if (!S.caps.db) { toast("قاعدة البيانات غير متاحة في هذا العرض. افتح المنصة من حسابك في Claude.", true); return false; } return true; }
 function dbErr(e) { console.error(e); const c = e?.code;
@@ -195,6 +195,8 @@ function caseRef() { const y = new Date().getFullYear(); const n = S.data.cases.
 
 /* ---------- router & render ---------- */
 function go(name, id = null, tab = null) {
+  const p = portalOf(name); if (p === "admin" && S.loaded.lawyers && !isManager()) name = "dashboard";
+  if (p) S.portal = portalOf(name);
   S.route = { name, id, tab }; S.ui.selected.clear(); S.ui.notifOpen = false;
   try { location.hash = name === "dashboard" ? "" : name; } catch {}
   $(".side")?.classList.remove("open");
@@ -226,9 +228,30 @@ function renderSide() {
   const pend = pendingForMe().length;
   const late = openTasks().filter((t) => isMine(t) && daysLeft(t.due) !== null && daysLeft(t.due) < 0).length;
   const n = (k, label, ic, badge) => `<a class="${S.route.name === k || (k === "cases" && S.route.name === "case") || (k === "drafting" && S.route.name === "doc" && !["agreement", "creview", "invoice"].includes(byId(S.data.docs, S.route.id)?.kind)) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") || (k === "consults" && S.route.name === "consult") || (k === "contracts" && (S.route.name === "creview" || (S.route.name === "doc" && ["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)))) ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
-  const me = myLawyer();
+  const me = myLawyer(); const admin = S.portal === "admin" && isManager();
+  const npend = (S.data.finreq || []).filter((r) => (r.status || "pending") === "pending").length + S.data.fees.filter((f) => f.status === "pending").length;
+  const n2 = (k, label, ic, badge, also = []) => `<a class="${S.route.name === k || also.includes(S.route.name) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
+  const switcher = isManager() ? `<div class="portal-switch"><a class="${admin ? "" : "on"}" data-act="portalSwitch" data-p="pro">${icon("gavel")}المهني</a><a class="${admin ? "on" : ""}" data-act="portalSwitch" data-p="admin">${icon("building")}الإداري${npend ? `<i class="num">${npend}</i>` : ""}</a></div>` : "";
+  const brand = `<div class="brand"><img class="mark" src="${LOGO.iconDark}" alt="ركز"><img class="word" src="${LOGO.textDark}" alt="ركز النظامية للمحاماة والاستشارات القانونية"></div>`;
+  const meBox = `<div class="me">${S.me.avatar ? `<img src="${esc(S.me.avatar)}" alt="">` : `<span class="avatar">${esc(initials(me?.name || S.me.name))}</span>`}
+      ${window.RAKZ_PASSWORD ? `<button class="icon-btn" data-act="changePw" title="تغيير كلمة المرور" aria-label="تغيير كلمة المرور" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("settings")}</button>` : ""}
+      ${window.RAKZ_SIGNOUT ? `<button class="icon-btn" data-act="signOut" title="تسجيل الخروج" aria-label="تسجيل الخروج" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("x")}</button>` : ""}
+      <div class="grow" style="min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(me?.name || S.me.name || S.me.email || "")}</div><small>${me ? esc(ROLES[me.role] || "") : "غير مضاف إلى فريق العمل"}</small></div></div>`;
+  if (admin) {
+    $(".side").innerHTML = `${brand}${switcher}<nav class="nav">
+      ${n2("admin", "لوحة الإدارة", "dash")}
+      ${n2("finreqs", "الطلبات المالية", "check", npend || "")}
+      ${n2("finfiles", "الملفات المالية للقضايا", "cases", "", ["finfile"])}
+      ${n2("finance", "المطالبات والفواتير", "receipt")}
+      <div class="nav-sec">الإدارة</div>
+      ${n2("clients", "العملاء", "clients")}
+      ${n2("team", "فريق العمل", "team")}
+      ${n2("settings", "الإعدادات والهوية", "settings")}
+    </nav>${meBox}`;
+    return;
+  }
   $(".side").innerHTML = `
-    <div class="brand"><img class="mark" src="${LOGO.iconDark}" alt="ركز"><img class="word" src="${LOGO.textDark}" alt="ركز النظامية للمحاماة والاستشارات القانونية"></div>
+    ${brand}${switcher}
     <nav class="nav">
       ${n("dashboard", "لوحة التحكم", "dash")}
       ${n("cases", "القضايا", "cases")}
@@ -241,22 +264,17 @@ function renderSide() {
       ${n("drafting", "اللوائح وعروض الأتعاب", "docs")}
       ${window.RAKZ_LAWS ? n("laws", "المكتبة النظامية", "book") : ""}
       ${window.RAKZ_LAWS ? n("chat", "اسأل المكتبة", "bot") : ""}
-      <div class="nav-sec">الإدارة</div>
-      ${isManager() ? n("finance", "المالية", "coin", S.data.fees.filter((f) => f.status === "pending").length || "") : ""}
+      <div class="nav-sec">العملاء</div>
       ${n("clients", "العملاء", "clients")}
-      ${n("team", "فريق العمل", "team")}
-      ${n("settings", "الإعدادات", "settings")}
-    </nav>
-    <div class="me">${S.me.avatar ? `<img src="${esc(S.me.avatar)}" alt="">` : `<span class="avatar">${esc(initials(me?.name || S.me.name))}</span>`}
-      ${window.RAKZ_PASSWORD ? `<button class="icon-btn" data-act="changePw" title="تغيير كلمة المرور" aria-label="تغيير كلمة المرور" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("settings")}</button>` : ""}
-      ${window.RAKZ_SIGNOUT ? `<button class="icon-btn" data-act="signOut" title="تسجيل الخروج" aria-label="تسجيل الخروج" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("x")}</button>` : ""}
-      <div class="grow" style="min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(me?.name || S.me.name || S.me.email || "")}</div><small>${me ? esc(ROLES[me.role] || "") : "غير مضاف إلى فريق العمل"}</small></div></div>`;
+    </nav>${meBox}`;
 }
 
 function renderBnav() {
   const b = $(".bnav"); if (!b) return;
   const r = S.route.name; const late = openTasks().filter((t) => isMine(t) && daysLeft(t.due) !== null && daysLeft(t.due) < 0).length;
   const it = (k, label, ic, on, badge) => `<a class="${on ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<i class="num">${badge}</i>` : ""}</a>`;
+  if (S.portal === "admin" && isManager()) { const np = (S.data.finreq || []).filter((x) => (x.status || "pending") === "pending").length + S.data.fees.filter((f) => f.status === "pending").length;
+    b.innerHTML = it("admin", "الإدارة", "dash", r === "admin") + it("finreqs", "الطلبات", "check", r === "finreqs", np) + it("finfiles", "الملفات", "cases", r === "finfiles" || r === "finfile") + it("finance", "الفواتير", "receipt", r === "finance") + `<a data-act="menu">${icon("menu")}<span>المزيد</span></a>`; return; }
   b.innerHTML = it("dashboard", "الرئيسية", "dash", r === "dashboard") + it("cases", "القضايا", "cases", r === "cases" || r === "case") + it("tasks", "المهام", "tasks", r === "tasks", late) + it("consults", "الاستشارات", "chat", r === "consults" || r === "consult")
     + `<a data-act="menu">${icon("menu")}<span>المزيد</span></a>`;
 }
@@ -266,6 +284,7 @@ function notifications() {
   pendingForMe().forEach((c) => out.push({ t: `طلب إسناد قضية: ${c.title}`, s: `من ${lawyerName(c.assignment.from)}`, act: "go", r: "assign", tone: "gold" }));
   S.data.cases.filter((c) => c.assignment && c.assignment.from === l && c.assignment.status !== "pending" && c.assignment.respondedAt && Date.now() - new Date(c.assignment.respondedAt) < 7 * 864e5)
     .forEach((c) => out.push({ t: `${lawyerName(c.assignment.to)} ${c.assignment.status === "accepted" ? "قبل" : "اعتذر عن"} إسناد: ${c.title}`, s: ago(c.assignment.respondedAt), act: "openCase", id: c.id, tone: c.assignment.status === "accepted" ? "ok" : "bad" }));
+  if (isManager()) { const np = (S.data.finreq || []).filter((r) => (r.status || "pending") === "pending"); if (np.length) out.push({ t: `${np.length} طلب مالي بانتظار اعتمادك`, s: "النظام الإداري", act: "go", r: "finreqs", tone: "gold" }); }
   openTasks().filter((t) => isMine(t) && t.due && daysLeft(t.due) <= 2).sort((a, b) => a.due.localeCompare(b.due))
     .forEach((t) => out.push({ t: `${TASK_KINDS[t.kind]?.t || "مهمة"}: ${t.title}`, s: `${fmtDate(t.due)} · ${daysLeft(t.due) < 0 ? "متأخر" : daysLeft(t.due) === 0 ? "اليوم" : "قريبًا"}`, act: "go", r: "tasks", tone: daysLeft(t.due) < 0 ? "bad" : "warn" }));
   return out;

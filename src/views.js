@@ -183,7 +183,7 @@ VIEWS.case = () => {
   const tasks = S.data.tasks.filter((t) => t.caseId === c.id);
   const docs = S.data.docs.filter((d) => d.caseId === c.id);
   const asg = c.assignment;
-  const tabs = [["overview", "نظرة عامة"], ["log", "سجل الإجراءات", S.caseLog.length], ["files", "المرفقات", S.caseFiles.length], ["tasks", "المهام والمواعيد", tasks.filter((t) => t.status !== "done").length], ["docs", "المستندات", docs.length], ["reports", "تقارير العميل"], ...(isManager() ? [["finance", "المالية"]] : [])];
+  const tabs = [["overview", "نظرة عامة"], ["log", "سجل الإجراءات", S.caseLog.length], ["files", "المرفقات", S.caseFiles.length], ["tasks", "المهام والمواعيد", tasks.filter((t) => t.status !== "done").length], ["docs", "المستندات", docs.length], ["reports", "تقارير العميل"]];
   return `
   <div class="crumbs"><a data-act="go" data-r="cases">القضايا</a><span>/</span><span class="num">${esc(c.ref || "")}</span></div>
   <div class="case-head">
@@ -203,7 +203,7 @@ VIEWS.case = () => {
     </div>
     <div class="tabs">${tabs.map(([k, t, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${t}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>
   </div>
-  ${(tab === "finance" && !isManager() ? CASE_TABS.overview : CASE_TABS[tab])(c, tasks, docs)}
+  ${(CASE_TABS[tab] && tab !== "finance" ? CASE_TABS[tab] : CASE_TABS.overview)(c, tasks, docs)}
   <input type="file" id="file-in" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.txt" data-ch="filesPicked" data-id="${c.id}">`;
 };
 
@@ -227,7 +227,7 @@ CASE_TABS.overview = (c, tasks) => {
         ${j ? `<div class="juris ${j.matchesCase === true ? "ok" : j.matchesCase === false ? "bad" : "unk"}"><div><b>${j.matchesCase === true ? "الجهة المسجلة تبدو مختصة" : j.matchesCase === false ? "يُحتمل عدم الاختصاص" : "يحتاج تحققًا"}</b><div class="small">الجهة المقترحة: ${esc(j.expectedCourt || "—")}</div><div class="small">${esc(j.note || j.basis || "")}</div></div></div>`
           : `<p class="muted small" style="margin:0">${S.caps.sample ? "يتحقق المساعد من الاختصاص النوعي والمكاني عند تحليل المرفقات أو القضية." : "سجّل المحكمة والدائرة والمدينة في بيانات القضية، وراجع الاختصاص النوعي والمكاني قبل القيد."}</p>`}
       </div>
-      ${feeCard("caseId", c)}
+      ${finReqCard(c, "caseId")}
       <div class="card"><div class="card-h"><h3>القادم في هذه القضية</h3><button class="btn sm" data-act="newTask" data-case="${c.id}">${icon("plus")}إضافة</button></div>
         ${up.length ? `<div class="list">${up.map((t) => taskRow(t, { noCase: true })).join("")}</div>` : `<p class="muted small" style="margin:0">لا توجد مواعيد أو مهام مفتوحة.</p>`}
       </div>

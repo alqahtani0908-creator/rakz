@@ -14,6 +14,7 @@ async function storeFile(file, folder) {
 const fileErr = (e, name) => { const m = { too_large: "الملف أكبر من المسموح", unsupported_type: "نوع الملف غير مدعوم", quota_or_state: "امتلأت مساحة التخزين", not_granted: "لا تملك صلاحية رفع الملفات" }; toast(`${name}: ${m[e?.code] || "تعذّر الرفع"}`, true); console.error(e); };
 /* Any stored file by id: a case attachment, a consultation document, or a payment's receipt (looked up by payment id). */
 function anyFile(id) {
+  if (String(id).startsWith("req:")) { const r = byId(S.data.finreq || [], id.slice(4)); return r?.receipt ? { id, ...r.receipt } : null; }
   const p = byId(S.data.finance, id);
   return byId(S.caseFiles, id) || byId(S.csFiles || [], id) || (p?.receipt ? { id: p.id, ...p.receipt } : null);
 }

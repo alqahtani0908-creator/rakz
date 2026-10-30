@@ -127,3 +127,32 @@ end; $$;
 drop trigger if exists guard_tax on public.documents;
 create trigger guard_tax before update or delete on public.documents for each row execute function public.guard_tax();
 revoke all on function public.guard_tax() from public, anon, authenticated;
+
+-- ---------- 2026-10-30: professional / administrative split ----------
+-- Financial requests (finreq) are filed by any member; only a manager approves or rejects them.
+create or replace function public.guard_finreq()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+begin
+  if tg_op = 'DELETE' then
+    if old.collection = 'finreq' and auth.uid() is not null and coalesce(old.data->>'status','pending') <> 'pending' and not public.is_manager() then raise exception 'requires_manager'; end if;
+    return old;
+  end if;
+  if new.collection <> 'finreq' or auth.uid() is null or public.is_manager() then return new; end if;
+  if tg_op = 'INSERT' and coalesce(new.data->>'status','pending') <> 'pending' then raise exception 'requires_manager'; end if;
+  if tg_op = 'UPDATE' and (coalesce(old.data->>'status','pending') <> 'pending' or coalesce(new.data->>'status','pending') <> 'pending') then raise exception 'requires_manager'; end if;
+  return new;
+end; $$;
+drop trigger if exists guard_finreq on public.documents;
+create trigger guard_finreq before insert or update or delete on public.documents for each row execute function public.guard_finreq();
+revoke all on function public.guard_finreq() from public, anon, authenticated;
+-- Closing or reopening a case's financial file is a manager decision.
+create or replace function public.guard_finclose()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+begin
+  if new.collection <> 'cases' or auth.uid() is null or public.is_manager() then return new; end if;
+  if (tg_op = 'INSERT' and new.data ? 'finClosed') or (tg_op = 'UPDATE' and (new.data->'finClosed') is distinct from (old.data->'finClosed')) then raise exception 'requires_manager'; end if;
+  return new;
+end; $$;
+drop trigger if exists guard_finclose on public.documents;
+create trigger guard_finclose before insert or update on public.documents for each row execute function public.guard_finclose();
+revoke all on function public.guard_finclose() from public, anon, authenticated;

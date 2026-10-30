@@ -664,3 +664,33 @@ a > svg { width: 1em; height: 1em; vertical-align: -0.15em; }
 .msg .cite:hover { background: var(--accent); color: #fff; }
 .msg .plan { display: flex; gap: 6px; align-items: center; padding: 0 4px; }
 .msg .plan svg { width: 12px; height: 12px; }
+
+/* ---------- Two systems: portal chooser and switch ---------- */
+.portal { display: flex; flex-direction: column; gap: 26px; align-items: center; padding: 20px 0 40px; }
+.portal-head { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.portal-logo { height: 72px; }
+.portal-head h1 { font-family: var(--f-display); font-size: 38px; margin: 6px 0 0; }
+.portal-head p { color: var(--muted); margin: 0; }
+.portal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 340px)); gap: 22px; width: 100%; justify-content: center; }
+.portal-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 28px 26px; border-radius: 22px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); cursor: pointer; text-align: start; color: var(--ink); overflow: hidden; isolation: isolate; transition: transform .25s, box-shadow .25s, border-color .25s; min-height: 330px; }
+.portal-card::before { content: ""; position: absolute; inset: 0; background: var(--pattern); background-size: 56px; opacity: .08; z-index: -1; mask-image: linear-gradient(200deg, #000, transparent 60%); -webkit-mask-image: linear-gradient(200deg, #000, transparent 60%); }
+.portal-card.admin { background: var(--navy-grad); color: #F3ECE4; border-color: transparent; }
+.portal-card.admin::before { opacity: .16; }
+.portal-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lift); border-color: var(--accent-2); }
+.portal-ic { width: 72px; height: 72px; border-radius: 22px; display: grid; place-items: center; background: var(--gold-grad); color: #fff; box-shadow: 0 14px 28px -12px rgba(140,109,86,.9); }
+.portal-ic svg { width: 36px; height: 36px; }
+.portal-t { font-family: var(--f-display); font-size: 27px; font-weight: 700; margin-top: 6px; }
+.portal-s { color: var(--muted); font-size: 13.5px; } .portal-card.admin .portal-s { color: rgba(243,236,228,.7); }
+.portal-items { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; margin-top: 4px; }
+.portal-items span::before { content: ""; display: inline-block; width: 6px; height: 6px; transform: rotate(45deg); background: var(--accent); margin-inline-end: 9px; vertical-align: 2px; }
+.portal-badge { position: absolute; top: 22px; inset-inline-end: 22px; background: var(--accent-soft); color: var(--accent-ink); border-radius: 99px; padding: 3px 12px; font-size: 12px; font-weight: 700; }
+.portal-card.admin .portal-badge { background: rgba(200,172,142,.2); color: var(--accent-2); }
+.portal-go { margin-top: auto; display: inline-flex; gap: 6px; align-items: center; font-weight: 700; color: var(--accent-ink); } .portal-card.admin .portal-go { color: var(--accent-2); }
+.portal-go svg { width: 15px; height: 15px; }
+.portal-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 0 4px 10px; border-radius: 14px; background: rgba(255,255,255,.06); border: 1px solid rgba(200,172,142,.18); }
+.portal-switch a { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 6px; border-radius: 10px; font-size: 13px; color: var(--nav-ink); opacity: .75; cursor: pointer; text-decoration: none; position: relative; }
+.portal-switch a svg { width: 15px; height: 15px; }
+.portal-switch a.on { background: var(--gold-grad); color: #fff; opacity: 1; font-weight: 700; box-shadow: 0 6px 14px -8px rgba(0,0,0,.6); }
+.portal-switch a i { position: absolute; top: -6px; inset-inline-start: 6px; background: var(--bad); color: #fff; font-style: normal; font-size: 10px; border-radius: 99px; padding: 0 5px; }
+.admin-hero .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 760px) { .portal-grid { grid-template-columns: minmax(0, 1fr); } .portal-card { min-height: 0; } .portal-head h1 { font-size: 30px; } }

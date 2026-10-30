@@ -341,10 +341,9 @@ VIEWS.consult = () => {
       <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
       <div class="row" style="margin-top:10px"><button class="btn primary" data-act="saveAnswer" data-id="${x.id}">${icon("check")}حفظ</button><button class="btn" data-act="opinionDoc" data-id="${x.id}">${icon("docs")}مستند Word بترويسة المكتب</button>
         <button class="btn" data-act="sendConsult" data-id="${x.id}">${icon("send")}إرسال للعميل (واتساب / بريد)</button></div></div>${consultFilesCard(x)}</div>
-    <div class="stack">${feeCard("consultId", x)}<div class="card"><div class="card-h"><h3>السؤال والوقائع</h3></div><div class="prose">${esc(x.question || "")}</div></div>
+    <div class="stack">${finReqCard(x, "consultId")}<div class="card"><div class="card-h"><h3>السؤال والوقائع</h3></div><div class="prose">${esc(x.question || "")}</div></div>
       <div class="card"><div class="card-h"><h3>إجراءات</h3></div><div class="stack" style="gap:8px">
         ${x.caseId ? `<button class="btn" data-act="openCase" data-id="${x.caseId}">${icon("cases")}فتح القضية المرتبطة</button>` : `<button class="btn" data-act="consultToCase" data-id="${x.id}">${icon("cases")}تحويل إلى قضية</button>`}
-        ${isManager() ? `<button class="btn" data-act="newInvoice" data-consult="${x.id}">${icon("receipt")}مطالبة بالأتعاب</button>` : ""}
         <button class="btn danger" data-act="deleteConsult" data-id="${x.id}">${icon("trash")}حذف</button></div></div></div></div>`;
 };
 CH.consultStatus = async (el) => { await upd(`consults/${el.dataset.id}`, { status: el.value, ...(el.value === "done" ? { doneAt: nowIso() } : {}) }); if (el.value === "done") { for (const t of S.data.tasks.filter((t) => t.consultId === el.dataset.id && t.status !== "done")) await upd(`tasks/${t.id}`, { status: "done", doneAt: nowIso() }); } toast("حُدّثت الحالة"); };
