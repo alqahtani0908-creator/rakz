@@ -11,7 +11,7 @@ const archCounts = (c) => Object.entries(c || {}).filter(([k]) => ARCH_LABEL[k] 
 async function loadArchives() { S.archBusy = "load"; try { S.archives = await window.RAKZ_ARCHIVE.list(); } catch (e) { S.archives = []; toast("تعذّر تحميل الأرشيف: " + (e.message || e.code), true); } S.archBusy = null; render(); }
 
 VIEWS.archive = () => {
-  if (!isManager()) return noAdmin();
+  if (!isManager()) return `<div class="card">${emptyBox("box", "الأرشيف من صلاحية المدير", "")}</div>`;
   if (!window.RAKZ_ARCHIVE) return `<div class="card">${emptyBox("box", "الأرشيف متاح في نسخة المنصة على sys.rakzlaw.sa", "")}</div>`;
   if (S.archives === undefined && S.archBusy !== "load") setTimeout(loadArchives);
   const live = (g) => g === "finance" ? S.data.finance.length + S.data.journal.length + (S.data.finreq || []).length + S.data.fees.length + S.data.docs.filter((d) => d.kind === "invoice").length

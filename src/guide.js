@@ -48,16 +48,14 @@ const HOWTO = [
   { t: "إرسال تقرير مستجدات للعميل", w: "القضية ← تبويب «التقارير» ← واتساب أو بريد", r: "cases", ic: "wa" },
   { t: "تسجيل مصروف أو دفعة استلمتها", w: "القضية ← بطاقة «الطلبات المالية» ← طلب جديد (يعتمده المدير)", r: "cases", ic: "coin" },
   { t: "قبول قضية أُسندت إليك", w: "طلبات الإسناد", r: "assign", ic: "inbox" },
-  { t: "اعتماد طلب مالي", w: "النظام الإداري ← الطلبات المالية", r: "finreqs", ic: "check", mgr: true },
-  { t: "إصدار مطالبة أو فاتورة ضريبية", w: "النظام الإداري ← المطالبات والفواتير", r: "finance", ic: "receipt", mgr: true },
-  { t: "إقفال الملف المالي لقضية", w: "النظام الإداري ← الملفات المالية ← القضية", r: "finfiles", ic: "cases", mgr: true },
-  { t: "إضافة عضو إلى الفريق", w: "النظام الإداري ← فريق العمل", r: "team", ic: "team", mgr: true },
-  { t: "أرشفة البيانات وبدء فترة جديدة", w: "النظام الإداري ← الأرشيف وتجديد المنصة", r: "archive", ic: "box", mgr: true },
+  { t: "إصدار مطالبة أو فاتورة ضريبية", w: "الإدارة ← المطالبات والفواتير", r: "finance", ic: "receipt", mgr: true },
+  { t: "إضافة عضو إلى الفريق", w: "الإدارة ← فريق العمل", r: "team", ic: "team", mgr: true },
+  { t: "أرشفة البيانات وبدء فترة جديدة", w: "الإدارة ← الأرشيف وتجديد المنصة", r: "archive", ic: "box", mgr: true },
 ];
 A.help = () => {
   const list = HOWTO.filter((h) => (!h.mgr || isManager()) && (h.need !== "laws" || window.RAKZ_LAWS));
   modal("دليل الاستخدام", `<div class="stack" style="gap:16px">
-    <div class="banner gold"><div class="grow"><b>جولة تعريفية</b>دقيقة واحدة تعرّفك على مكان كل قسم في ${S.portal === "admin" ? "النظام الإداري" : "النظام المهني"}.</div><button class="btn gold" data-act="tourStart">${icon("play")}ابدأ الجولة</button></div>
+    <div class="banner gold"><div class="grow"><b>جولة تعريفية</b>دقيقة واحدة تعرّفك على مكان كل قسم في المنصة.</div><button class="btn gold" data-act="tourStart">${icon("play")}ابدأ الجولة</button></div>
     <div><b>ماذا تريد أن تفعل؟</b><div class="howto">${list.map((h) => `<button class="howto-i" data-act="howGo" ${h.act ? `data-do="${h.act}"` : `data-r="${h.r}"`}><span class="law-ic">${icon(h.ic)}</span><span><b>${h.t}</b><small>${h.w}</small></span></button>`).join("")}</div></div>
     ${window.RAKZ_PUSH ? `<div class="card" style="padding:4px 16px">${pushRow()}</div>` : ""}</div>`, "", true);
 };
@@ -67,18 +65,9 @@ A.howGo = (el) => { closeModal(); if (el.dataset.do) return A[el.dataset.do](el)
 const mobile = () => matchMedia("(max-width: 860px)").matches;
 function tourSteps(kind) {
   const m = mobile(); const nav = (r) => (m ? `.bnav [data-r="${r}"]` : `.side [data-r="${r}"]`); const more = `.bnav [data-act="menu"]`;
-  const hello = { t: kind === "admin" ? "النظام الإداري" : `أهلًا بك في منصة ركز${myLawyer() ? "، " + myLawyer().name.split(" ")[0] : ""}`, d: kind === "admin" ? "هنا المالية كلها: كل حركة يرفعها المحامون تنتظر اعتمادك، وكل قضية لها ملف مالي يبقى مفتوحًا حتى تقفله." : "جولة قصيرة تعرّفك على مكان كل شيء. تستطيع إعادتها في أي وقت من زر «؟» أعلى الصفحة." };
+  const hello = { t: `أهلًا بك في منصة ركز${myLawyer() ? "، " + myLawyer().name.split(" ")[0] : ""}`, d: "جولة قصيرة تعرّفك على مكان كل شيء. تستطيع إعادتها في أي وقت من زر «؟» أعلى الصفحة." };
   const end = { sel: '[data-act="help"]', t: "الدليل دائمًا هنا", d: "زر «؟» يفتح دليل «ماذا تريد أن تفعل؟» ويعيد هذه الجولة.", push: true };
-  if (kind === "admin") return [hello,
-    { sel: ".portal-switch", t: "التبديل بين النظامين", d: "«المهني» للقضايا والعمل القانوني، و«الإداري» للمالية والاعتمادات.", skipMobile: true },
-    { sel: nav("admin"), t: "لوحة الإدارة", d: "المحصّل والمستحق ومقارنة هذا الشهر بالماضي وبالعام الماضي، وأعمار المستحقات وأكبر العملاء." },
-    { sel: nav("finreqs"), t: "الطلبات المالية", d: "مصروفات المحامين والدفعات المستلمة واقتراحات الأتعاب. لا يُسجَّل أي مبلغ إلا بعد اعتمادك هنا." },
-    { sel: nav("finfiles"), t: "الملفات المالية للقضايا", d: "لكل قضية أتعابها وما فوتر وحُصّل والمستحق. أقفل الملف بعد تسوية المستحقات." },
-    { sel: nav("finance"), t: "المطالبات والفواتير", d: "إصدار المطالبات والفواتير الضريبية والإشعارات الدائنة، والقيود وكشوف العملاء." },
-    m ? { sel: more, t: "المزيد", d: "العملاء وفريق العمل والإعدادات، والتبديل إلى النظام المهني." } : { sel: nav("team"), t: "فريق العمل والإعدادات", d: "أضف الأعضاء بأدوارهم، وبيانات المكتب والرقم الضريبي والخط والورق الرسمي." },
-    end];
   return [hello,
-    isManager() && !m ? { sel: ".portal-switch", t: "نظامان منفصلان", d: "أنت الآن في «المهني» للعمل القانوني اليومي. المالية والاعتمادات في «الإداري»." } : null,
     { sel: nav("dashboard"), t: "لوحة التحكم", d: "ملخص يومك: الجلسات القادمة، وما يتطلب انتباهك، ومقارنة هذا الشهر بالماضي." },
     { sel: nav("tasks"), t: "المهام والتذكيرات", d: "الجلسات ومواعيد المذكرات والمتطلبات. الرقم الأحمر على القسم يعني مهام متأخرة عليك." },
     { sel: nav("cases"), t: "القضايا", d: "كل قضية بملفها: الأطراف والجلسات والمرفقات والسجل وتقارير العميل والطلبات المالية." },
@@ -86,6 +75,7 @@ function tourSteps(kind) {
     m ? { sel: more, t: "بقية الأقسام في «المزيد»", d: "اللوائح والعقود والمكتبة النظامية والعملاء وناجز وطلبات الإسناد." } : null,
     m ? null : { sel: nav("drafting"), t: "الصياغة والمراجعة", d: "اللوائح الاعتراضية والمذكرات وعروض الأتعاب، والعقود صياغةً ومراجعةً بالعربية والإنجليزية." },
     m || !window.RAKZ_LAWS ? null : { sel: nav("laws"), t: "البحث النظامي", d: "الأنظمة ولوائحها من المصادر الرسمية، و«اسأل المكتبة» لسؤال قانوني بإجابة موثقة بالمواد." },
+    isManager() && !m ? { sel: nav("finance"), t: "الإدارة", d: "للمدير فقط: المالية (الأتعاب والمطالبات والدفعات والمصروفات)، وفريق العمل، والإعدادات والهوية، والأرشيف." } : null,
     m ? null : { sel: nav("najiz"), t: "ناجز", d: "الصق صفحة القضية من ناجز أو ارفعها ليستخرج المساعد الجلسات والقرارات ويحدّث القضية." },
     { sel: "#gsearch", t: "البحث السريع", d: "ابحث عن أي قضية أو عميل أو رقم ناجز من أي صفحة.", skipMobile: true },
     { sel: ".new-case", t: "قضية جديدة", d: "افتح قضية من أي مكان، وأسندها لمحامٍ من الفريق." },
@@ -96,11 +86,11 @@ function tourSteps(kind) {
 const tourKey = (kind) => `tour.${kind}.${(S.me?.email || "").toLowerCase()}`;
 function maybeTour() {
   if (S.tour || !S.booted || !S.loaded.lawyers || $("#modal")) return;
-  const kind = S.route.name === "admin" ? "admin" : S.route.name === "dashboard" ? "pro" : null;
+  const kind = S.route.name === "dashboard" ? "pro" : null;
   if (!kind || lsGet(tourKey(kind), false)) return;
-  setTimeout(() => { if (!S.tour && !$("#modal") && (S.route.name === "admin" ? "admin" : S.route.name === "dashboard" ? "pro" : null) === kind) startTour(kind); }, 900);
+  setTimeout(() => { if (!S.tour && !$("#modal") && S.route.name === "dashboard") startTour(kind); }, 900);
 }
-A.tourStart = () => { closeModal(); startTour(S.portal === "admin" && isManager() ? "admin" : "pro"); };
+A.tourStart = () => { closeModal(); startTour("pro"); };
 function startTour(kind) {
   const visible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.right > 0 && r.left < innerWidth && getComputedStyle(el).visibility !== "hidden"; };
   const steps = tourSteps(kind).filter((s) => !(s.skipMobile && mobile())).filter((s) => !s.sel || visible($(s.sel)));

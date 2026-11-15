@@ -120,7 +120,7 @@ const num = (v) => Number(String(v ?? "").replace(/[,٬\s]/g, "")) || 0;
 function invPaid(inv) { return fin("payment").filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + num(p.amount), 0); }
 function invState(inv) {
   if (inv.status === "void") return { k: "void", t: "ملغاة", c: "" };
-  const paid = invPaid(inv) + (typeof credited === "function" ? credited(inv) : 0);
+  const paid = invPaid(inv);
   if (paid >= num(inv.total) - 0.009) return { k: "paid", t: "مسددة", c: "ok" };
   if (inv.due && daysLeft(inv.due) < 0) return { k: "late", t: paid ? "متأخرة (جزئي)" : "متأخرة", c: "bad" };
   return paid ? { k: "partial", t: "مسددة جزئيًا", c: "warn" } : { k: "open", t: "غير مسددة", c: "info" };
@@ -138,7 +138,7 @@ function invRow(x) {
   const st = invState(x); const paid = invPaid(x);
   return `<tr><td class="primary-cell"><div class="t">${esc(x.desc || "مطالبة")}</div><div class="ref">${esc(x.no || "")} · ${fmtDate(x.date)}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td>
     <td data-label="الإجمالي" class="num">${money(x.total)}</td><td data-label="المسدد" class="num">${money(paid)}</td><td data-label="الاستحقاق" class="num">${x.due ? fmtDate(x.due) : "—"}</td><td data-label="الحالة">${pill(st.t, st.c)}</td>
-    <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${st.k !== "paid" && st.k !== "void" ? `<button class="btn sm" data-act="newPayment" data-inv="${x.id}">${icon("plus")}دفعة</button>` : ""}${x.tax ? `<button class="btn sm" data-act="openTax" data-id="${x.id}" title="الفاتورة الضريبية ${esc(x.tax.no)}">${icon("receipt")}${esc(x.tax.no)}</button><button class="btn sm ghost" data-act="issueCredit" data-id="${x.id}" title="إشعار دائن">${icon("x")}</button>` : st.k !== "void" ? `<button class="btn sm gold" data-act="issueTax" data-id="${x.id}" title="إصدار فاتورة ضريبية">${icon("receipt")}ضريبية</button>` : ""}<button class="btn sm ghost" data-act="sendInvoice" data-id="${x.id}" title="إرسال للعميل (واتساب / بريد)${x.sentAt ? ` — أُرسلت ${fmtWhen(x.sentAt)}` : ""}">${icon("send")}</button><button class="btn sm ghost" data-act="invoiceDoc" data-id="${x.id}" title="مستند المطالبة">${icon("docs")}</button><button class="btn sm ghost" data-act="editFin" data-id="${x.id}" title="تعديل">${icon("edit")}</button></div></td></tr>`;
+    <td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${st.k !== "paid" && st.k !== "void" ? `<button class="btn sm" data-act="newPayment" data-inv="${x.id}">${icon("plus")}دفعة</button>` : ""}<button class="btn sm ghost" data-act="sendInvoice" data-id="${x.id}" title="إرسال للعميل (واتساب / بريد)${x.sentAt ? ` — أُرسلت ${fmtWhen(x.sentAt)}` : ""}">${icon("send")}</button><button class="btn sm ghost" data-act="invoiceDoc" data-id="${x.id}" title="مستند المطالبة">${icon("docs")}</button><button class="btn sm ghost" data-act="editFin" data-id="${x.id}" title="تعديل">${icon("edit")}</button></div></td></tr>`;
 }
 const invTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>المطالبة</th><th>العميل</th><th>الإجمالي</th><th>المسدد</th><th>الاستحقاق</th><th>الحالة</th><th></th></tr></thead><tbody>${rows.map(invRow).join("")}</tbody></table></div>` : "";
 const payTable = (rows) => rows.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>الدفعة</th><th>العميل</th><th>المبلغ</th><th>الطريقة</th><th></th></tr></thead><tbody>${rows.map((x) => `<tr><td class="primary-cell"><div class="t">${fmtDate(x.date)}</div><div class="ref">${x.invoiceId ? esc(byId(S.data.finance, x.invoiceId)?.no || "") : "دفعة مقدمة"}${x.ref ? " · " + esc(x.ref) : ""}</div></td><td data-label="العميل">${esc(clientName(x.clientId))}</td><td data-label="المبلغ" class="num">${money(x.amount)}</td><td data-label="الطريقة">${esc(x.method || "")}</td><td data-noact="1"><div class="row" style="gap:4px;flex-wrap:nowrap">${receiptBtn(x)}<button class="btn sm ghost" data-act="editFin" data-id="${x.id}">${icon("edit")}</button></div></td></tr>`).join("")}</tbody></table></div>` : "";
@@ -157,8 +157,8 @@ VIEWS.finance = () => {
     <div class="kpi"><span class="lbl">المحصّل</span><span class="val" style="color:var(--ok)">${money(t.collected)}</span><span class="foot">من ${money(t.invoiced)} مفوتر</span></div>
     <div class="kpi attn"><span class="lbl">المستحق على العملاء</span><span class="val">${money(t.outstanding)}</span><span class="foot">مطالبات لم تُسدد</span></div>
     <div class="kpi ${t.late ? "alert" : ""}"><span class="lbl">متأخر السداد</span><span class="val">${money(t.late)}</span><span class="foot">المصروفات ${money(t.expenses)}</span></div></div>
-  <div class="tabs">${[["invoices", "المطالبات", invs.length], ["payments", "المدفوعات", fin("payment").length], ["expenses", "المصروفات", fin("expense").length], ["receivables", "ذمم العملاء"], ["fees", "طلبات الأتعاب", S.data.fees.filter((f) => f.status === "pending").length], ["journal", "القيود", (S.data.journal || []).length], ["trial", "ميزان المراجعة"], ["statement", "كشف حساب عميل"]].map(([k, l, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${l}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>
-  ${FIN_TABS[tab] ? FIN_TABS[tab]() : tab === "invoices" ? (invTable(invs) ? invTable(invs) + creditTable() : "") || `<div class="card">${emptyBox("receipt", "لا مطالبات بعد", "أنشئ مطالبة بأتعاب قضية أو استشارة، ثم سجّل دفعاتها.", `<button class="btn gold" data-act="newInvoice">${icon("receipt")}مطالبة جديدة</button>`)}</div>`
+  <div class="tabs">${[["invoices", "المطالبات", invs.length], ["payments", "المدفوعات", fin("payment").length], ["expenses", "المصروفات", fin("expense").length], ["receivables", "ذمم العملاء"]].map(([k, l, n]) => `<a class="${tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${l}${n ? `<span class="n num">${n}</span>` : ""}</a>`).join("")}</div>
+  ${tab === "invoices" ? invTable(invs) || `<div class="card">${emptyBox("receipt", "لا مطالبات بعد", "أنشئ مطالبة بأتعاب قضية أو استشارة، ثم سجّل دفعاتها.", `<button class="btn gold" data-act="newInvoice">${icon("receipt")}مطالبة جديدة</button>`)}</div>`
   : tab === "payments" ? payTable([...fin("payment")].sort((a, b) => (b.date || "").localeCompare(a.date || ""))) || `<div class="card">${emptyBox("coin", "لا مدفوعات مسجلة", "")}</div>`
   : tab === "expenses" ? expTable([...fin("expense")].sort((a, b) => (b.date || "").localeCompare(a.date || ""))) || `<div class="card">${emptyBox("coin", "لا مصروفات مسجلة", "")}</div>`
   : recv.length ? `<div class="tbl-wrap"><table class="tbl resp"><thead><tr><th>العميل</th><th>المفوتر</th><th>المحصّل</th><th>المستحق</th><th>المتأخر</th></tr></thead><tbody>${recv.map(([cl, v]) => `<tr data-act="clientCases" data-id="${cl.id}"><td class="primary-cell"><div class="t">${esc(cl.name)}</div></td><td data-label="المفوتر" class="num">${money(v.invoiced)}</td><td data-label="المحصّل" class="num">${money(v.collected)}</td><td data-label="المستحق" class="num"><b>${money(v.outstanding)}</b></td><td data-label="المتأخر" class="num" style="color:${v.late ? "var(--bad)" : "inherit"}">${money(v.late)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="card">${emptyBox("clients", "لا ذمم بعد", "")}</div>`}`;
@@ -175,6 +175,20 @@ CASE_TABS.finance = (c) => {
   ${invTable(invs)}${payTable(pays)}${expTable(exps)}
   ${!invs.length && !pays.length && !exps.length ? `<div class="card">${emptyBox("coin", "لا حركات مالية لهذه القضية", "")}</div>` : ""}`;
 };
+/* the manager's money summary on a case or consultation page: agreed fee, claimed, collected, and quick actions */
+function caseFeeCard(c) {
+  const t = finTotals((x) => x.caseId === c.id); const fee = num(c.fee);
+  return `<div class="card"><div class="card-h"><h3>الأتعاب</h3><a class="sub" data-act="openCase" data-id="${c.id}" data-tab="finance" style="cursor:pointer">التفاصيل ←</a></div>
+    <div class="grid2" style="gap:8px 16px"><div><span class="small muted">المتفق عليها</span><div class="num"><b>${fee ? money(fee) : "—"}</b></div></div><div><span class="small muted">المطالَب بها</span><div class="num"><b>${money(t.invoiced)}</b></div></div>
+      <div><span class="small muted">المحصّل</span><div class="num" style="color:var(--ok)"><b>${money(t.collected)}</b></div></div><div><span class="small muted">المستحق</span><div class="num"><b>${money(t.outstanding)}</b></div></div></div>
+    <div class="row" style="margin-top:12px">${fee ? "" : `<button class="btn sm" data-act="editCase" data-id="${c.id}">حدّد الأتعاب</button>`}<button class="btn sm gold" data-act="newInvoice" data-case="${c.id}">${icon("receipt")}مطالبة</button><button class="btn sm" data-act="newPayment" data-case="${c.id}">${icon("plus")}دفعة</button></div></div>`;
+}
+function consultFeeCard(x) {
+  const invs = fin("invoice").filter((i) => i.consultId === x.id && i.status !== "void"); const paid = invs.reduce((s, i) => s + invPaid(i), 0);
+  return `<div class="card"><div class="card-h"><h3>الأتعاب</h3>${x.fee ? `<span class="sub num">${money(x.fee)} ر.س</span>` : ""}</div>
+    ${invs.length ? `<div class="small muted">${invs.length} مطالبة · المحصّل <b class="num">${money(paid)}</b> من <b class="num">${money(invs.reduce((s, i) => s + num(i.total), 0))}</b></div>` : `<div class="small muted">لم تصدر مطالبة بعد.</div>`}
+    <div class="row" style="margin-top:10px"><button class="btn sm gold" data-act="newInvoice" data-consult="${x.id}">${icon("receipt")}مطالبة بالأتعاب</button></div></div>`;
+}
 function finNo(type) { const y = new Date().getFullYear(); const p = type === "invoice" ? "RK-I" : "RK-R"; return `${p}-${y}-${String(fin(type).length + 1).padStart(3, "0")}`; }
 function invoiceForm(x = {}) {
   const c = caseById(x.caseId); const cs = byId(S.data.consults, x.consultId);
@@ -196,7 +210,6 @@ F.saveInvoice = async (d) => {
   let id = d.id;
   if (d.id) { data.status = d.void === "1" ? "void" : "active"; data.no = byId(S.data.finance, d.id)?.no; await upd(`finance/${d.id}`, data); }
   else { data.no = finNo("invoice"); data.status = "active"; id = await add("finance", data); if (d.caseId) await logCase(d.caseId, "note", `صدرت مطالبة مالية ${data.no} بمبلغ ${money(total)} ر.س`); }
-  await syncJournal("invoice", id, data, `مطالبة ${data.no || ""} — ${clientName(data.clientId)}: ${data.desc}`);
   closeModal(); toast("حُفظت المطالبة");
 };
 function paymentForm(x = {}) {
@@ -221,7 +234,6 @@ F.savePayment = async (d) => {
   if (gone) { await del(`finance/${d.id}`); if (old?.receipt?.assetId) { try { await S.caps.assets.delete(old.receipt.assetId); } catch (e) { console.warn(e); } } }
   else if (d.id) await upd(`finance/${d.id}`, data);
   else { data.no = finNo("payment"); id = await add("finance", data); if (data.caseId) await logCase(data.caseId, "note", `استُلمت دفعة ${money(data.amount)} ر.س (${d.method})`); }
-  await syncJournal("payment", id, gone ? null : data, `دفعة من ${clientName(data.clientId)}${data.ref ? " — " + data.ref : ""}`);
   closeModal(); toast("حُفظت الدفعة");
 };
 function expenseForm(x = {}) {
@@ -241,12 +253,10 @@ F.saveExpense = async (d) => {
   if (gone) await del(`finance/${d.id}`);
   else if (d.id) await upd(`finance/${d.id}`, data);
   else { id = await add("finance", data); if (d.caseId) await logCase(d.caseId, "note", `صُرف ${money(data.amount)} ر.س: ${d.category}${d.desc ? " — " + d.desc : ""}`); }
-  await syncJournal("expense", id, gone ? null : data, `مصروف ${data.category}${data.desc ? " — " + data.desc : ""}`);
   closeModal(); toast("حُفظ المصروف");
 };
 A.editFin = (el) => {
   const x = byId(S.data.finance, el.dataset.id); if (!x) return; S.pmReceipt = null;
-  if (x.tax) return toast(`صدرت عنها فاتورة ضريبية (${x.tax.no}) فلا تُعدَّل؛ للتصحيح أصدر إشعارًا دائنًا.`, true);
   const [t, f, form] = x.type === "invoice" ? ["تعديل المطالبة", "fin-form", invoiceForm(x)] : x.type === "payment" ? ["تعديل الدفعة", "fin-form", paymentForm(x)] : ["تعديل المصروف", "fin-form", expenseForm(x)];
   modal(t, form, `<button class="btn primary" type="submit" form="${f}">حفظ</button><button class="btn ghost" data-act="closeModal">إلغاء</button>`);
 };
@@ -341,7 +351,7 @@ VIEWS.consult = () => {
       <textarea id="cs-answer" class="inp" rows="16" style="font-family:var(--f-doc);font-size:15.5px;line-height:1.9" data-draft="${key}" ${gen ? "readonly" : ""}>${esc(ans)}</textarea>
       <div class="row" style="margin-top:10px"><button class="btn primary" data-act="saveAnswer" data-id="${x.id}">${icon("check")}حفظ</button><button class="btn" data-act="opinionDoc" data-id="${x.id}">${icon("docs")}مستند Word بترويسة المكتب</button>
         <button class="btn" data-act="sendConsult" data-id="${x.id}">${icon("send")}إرسال للعميل (واتساب / بريد)</button></div></div>${consultFilesCard(x)}</div>
-    <div class="stack">${finReqCard(x, "consultId")}<div class="card"><div class="card-h"><h3>السؤال والوقائع</h3></div><div class="prose">${esc(x.question || "")}</div></div>
+    <div class="stack">${isManager() ? consultFeeCard(x) : ""}<div class="card"><div class="card-h"><h3>السؤال والوقائع</h3></div><div class="prose">${esc(x.question || "")}</div></div>
       <div class="card"><div class="card-h"><h3>إجراءات</h3></div><div class="stack" style="gap:8px">
         ${x.caseId ? `<button class="btn" data-act="openCase" data-id="${x.caseId}">${icon("cases")}فتح القضية المرتبطة</button>` : `<button class="btn" data-act="consultToCase" data-id="${x.id}">${icon("cases")}تحويل إلى قضية</button>`}
         <button class="btn danger" data-act="deleteConsult" data-id="${x.id}">${icon("trash")}حذف</button></div></div></div></div>`;

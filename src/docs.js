@@ -527,7 +527,7 @@ VIEWS.doc = () => {
       ${d.kind === "agreement" && S.caps.sample ? `<button class="btn" data-act="reviewContract" data-doc="${d.id}">${icon("scale")}مراجعة وتحكيم</button><button class="btn" data-act="translateFrom" data-id="${d.id}">${icon("chat")}ترجمة</button>` : ""}
       ${d.kind === "creview" ? `<button class="btn" data-act="openReview" data-id="${d.id}">${icon("eye")}عرض التقرير التفاعلي</button>` : ""}
       <button class="btn" data-act="copyDoc">${icon("copy")}نسخ النص</button>
-      ${d.locked ? (d.subtype === "tax" ? `<button class="btn ghost" data-act="issueCredit" data-id="${d.finId}">${icon("x")}إشعار دائن</button>` : "") : `<button class="btn" data-act="aiEdit" data-id="${d.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}تعديل بالمساعد</button>
+      ${d.locked ? "" : `<button class="btn" data-act="aiEdit" data-id="${d.id}" ${S.caps.sample ? "" : "disabled"}>${icon("spark")}تعديل بالمساعد</button>
       <button class="btn ghost" data-act="toggleFinal" data-id="${d.id}">${d.status === "final" ? "إرجاع لمسودة" : "اعتماد كنهائي"}</button>
       <button class="btn ghost danger" data-act="deleteDoc" data-id="${d.id}" aria-label="حذف">${icon("trash")}</button>`}`}</div></div>
   ${d.locked ? `<div class="banner gold"><div class="grow"><b>${d.subtype === "credit" ? "إشعار دائن صادر" : "فاتورة ضريبية صادرة"}</b> — لا يُعدَّل نصها ولا تُحذف. للتصحيح أصدر إشعارًا دائنًا. تحمل رمز الاستجابة السريعة المطلوب من هيئة الزكاة والضريبة والجمارك.</div></div>` : ""}

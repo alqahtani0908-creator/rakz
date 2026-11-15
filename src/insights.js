@@ -7,22 +7,10 @@ const monthKeys = (n, end = todayStr()) => { const d = parseDay(end); const out 
 const mLabel = (k, yr = false) => { const [y, m] = k.split("-").map(Number); return MONTHS[m - 1] + (yr ? " " + y : ""); };
 const thisM = () => mKey(todayStr());
 const prevM = () => monthKeys(2)[0];
-const sameMLastYear = () => { const [y, m] = thisM().split("-"); return `${+y - 1}-${m}`; };
 const inM = (d, k) => mKey(d) === k;
-/* year to date, and the same span of the previous year */
-const ytd = (d) => { const t = todayStr(); return !!d && d.slice(0, 4) === t.slice(0, 4) && d <= t; };
-const ytdLast = (d) => { const t = todayStr(); const y = String(+t.slice(0, 4) - 1); return !!d && d.slice(0, 4) === y && d.slice(5) <= t.slice(5); };
 const caseOpened = (c) => c.openedAt || (c.createdAt || "").slice(0, 10);
 const caseClosed = (c) => c.status === "closed" ? (c.closedAt || (c.updatedAt || "").slice(0, 10)) : "";
 
-/* ---------- money by period ---------- */
-const sumIf = (rows, k, f) => rows.filter(f).reduce((s, x) => s + num(x[k]), 0);
-function finPeriod(f) {
-  const invoiced = sumIf(fin("invoice").filter((x) => x.status !== "void"), "total", (x) => f(x.date)) - sumIf(fin("credit"), "total", (x) => f(x.date));
-  const collected = sumIf(fin("payment"), "amount", (x) => f(x.date));
-  const expenses = sumIf(fin("expense"), "amount", (x) => f(x.date));
-  return { invoiced, collected, expenses, net: collected - expenses };
-}
 
 /* ---------- small pieces ---------- */
 /* change from b to a; good = "up" when a rise is good news, "down" when a fall is */
@@ -66,11 +54,6 @@ function ring(pct, label, foot = "") {
 function hbars(rows, { fmt = (n) => String(n), cls = "s1" } = {}) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return `<div class="hbars">${rows.map((r) => `<div class="hb"${r.act || ""}><span class="hb-n">${esc(r.name)}${r.sub ? `<small>${r.sub}</small>` : ""}</span><div class="hb-t"><i class="${cls}" style="width:${(r.value / max) * 100}%" data-tip="${esc(r.name)}: ${fmt(r.value)}"></i></div><b class="num">${fmt(r.value)}</b></div>`).join("")}</div>`;
-}
-/* actual against a target in one row (e.g. collected against invoiced) */
-function bullet(rows, fmt = money) {
-  const max = Math.max(1, ...rows.map((r) => Math.max(r.target, r.value)));
-  return `<div class="hbars">${rows.map((r) => `<div class="hb"${r.act || ""}><span class="hb-n">${esc(r.name)}<small>${r.target ? Math.round((r.value / r.target) * 100) + "% محصّل" : ""}</small></span><div class="hb-t"><i class="s2 ghost" style="width:${(r.target / max) * 100}%" data-tip="المفوتر: ${fmt(r.target)}"></i><i class="s1 over" style="width:${(r.value / max) * 100}%" data-tip="المحصّل: ${fmt(r.value)}"></i></div><b class="num">${fmt(r.value)}</b></div>`).join("")}</div>`;
 }
 const GRAD_DEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="rk-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#C8AC8E"/><stop offset="1" stop-color="#8C6D56"/></linearGradient></defs></svg>`;
 const sectionHead = (t, s = "") => `<div class="sec-h"><h2>${esc(t)}</h2>${s ? `<span>${s}</span>` : ""}</div>`;
@@ -125,49 +108,5 @@ function proInsights() {
           <td data-label="المنظورة"><div class="inbar"><i style="width:${(r.act / maxAct) * 100}%"></i><b class="num">${r.act}</b></div></td>
           <td data-label="جلسات 14 يومًا" class="num">${r.sess}</td><td data-label="متأخرة" class="num">${r.late ? `<span class="pill bad">${r.late}</span>` : "0"}</td>
           <td data-label="منجزة" class="num">${r.done} <small class="muted">/ ${r.prev}</small></td><td data-label="التغير">${delta(r.done, r.prev)}</td></tr>`).join("")}</tbody></table></div>` : emptyBox("team", "لم يُضف أحد إلى الفريق بعد", "")}</div>
-  </div>`;
-}
-
-/* ================= administrative dashboard ================= */
-function adminInsights() {
-  const keys = monthKeys(12); const m = thisM(), p = prevM(), ly = sameMLastYear();
-  const cur = finPeriod((d) => inM(d, m)), prv = finPeriod((d) => inM(d, p)), lyM = finPeriod((d) => inM(d, ly));
-  const yt = finPeriod(ytd), ytl = finPeriod(ytdLast);
-  const per = keys.map((k) => finPeriod((d) => inM(d, k)));
-  const all = finTotals(); const rate = all.invoiced ? (all.collected / all.invoiced) * 100 : null;
-  const rateY = yt.invoiced ? (yt.collected / yt.invoiced) * 100 : null, rateYL = ytl.invoiced ? (ytl.collected / ytl.invoiced) * 100 : null;
-  const y = todayStr().slice(0, 4);
-
-  /* receivables by age past due */
-  const buckets = [["غير مستحقة بعد", 0], ["1–30 يومًا", 0], ["31–60 يومًا", 0], ["61–90 يومًا", 0], ["أكثر من 90", 0]];
-  for (const x of fin("invoice").filter((i) => i.status !== "void")) {
-    const rest = Math.max(0, num(x.total) - invPaid(x)); if (!rest) continue;
-    const late = x.due ? -daysLeft(x.due) : 0;
-    buckets[late <= 0 ? 0 : late <= 30 ? 1 : late <= 60 ? 2 : late <= 90 ? 3 : 4][1] += rest;
-  }
-  const clients = S.data.clients.map((cl) => ({ cl, t: finTotals((x) => x.clientId === cl.id) })).filter((r) => r.t.invoiced).sort((a, b) => b.t.invoiced - a.t.invoiced).slice(0, 6);
-  const byLawyer = S.data.lawyers.map((l) => { const ids = new Set(S.data.cases.filter((c) => c.lawyerId === l.id).map((c) => c.id)); return { name: l.name, value: sumIf(fin("payment"), "amount", (x) => ids.has(x.caseId) && ytd(x.date)) }; }).filter((r) => r.value).sort((a, b) => b.value - a.value).slice(0, 6);
-  const byType = CASE_TYPES.map((t) => { const ids = new Set(S.data.cases.filter((c) => c.type === t).map((c) => c.id)); return { name: t, value: sumIf(fin("payment"), "amount", (x) => ids.has(x.caseId)) }; }).filter((r) => r.value).sort((a, b) => b.value - a.value).slice(0, 6);
-
-  const rowsCmp = [["المفوتر", "invoiced", "up"], ["المحصّل", "collected", "up"], ["المصروفات", "expenses", "down"], ["صافي التدفق", "net", "up"]];
-  return `${GRAD_DEFS}${sectionHead("المؤشرات المالية والمقارنات", `${mLabel(m, true)} · منذ بداية ${y}`)}
-  <div class="stat-strip">${rowsCmp.map(([t, k, g]) => `<div class="stat"><span class="lbl">${t} — ${mLabel(m)}</span><span class="val num">${short(cur[k])}<small> ر.س</small></span><span class="cmp">${delta(cur[k], prv[k], g)}<small>${mLabel(p)}: <b class="num">${money(prv[k])}</b></small></span></div>`).join("")}
-    <div class="stat"><span class="lbl">نسبة التحصيل ${y}</span><span class="val num">${rateY === null ? "—" : Math.round(rateY) + "%"}</span><span class="cmp">${rateY !== null && rateYL !== null ? delta(rateY, rateYL, "up") : ""}<small>${+y - 1}: <b class="num">${rateYL === null ? "—" : Math.round(rateYL) + "%"}</b></small></span></div></div>
-  <div class="dash-grid">
-    <div class="card span2"><div class="card-h"><h3>المفوتر والمحصّل والمصروفات</h3><span class="sub">آخر 12 شهرًا · ر.س</span></div>
-      ${colChart(keys, [{ name: "المفوتر", cls: "s2", values: per.map((x) => Math.max(0, x.invoiced)) }, { name: "المحصّل", cls: "s1", values: per.map((x) => x.collected) }, { name: "المصروفات", cls: "s3", values: per.map((x) => x.expenses) }], { fmt: (n) => money(n) + " ر.س", height: 200 })}</div>
-    <div class="card"><div class="card-h"><h3>نسبة التحصيل</h3><span class="sub">المحصّل من المفوتر</span></div>
-      <div class="rings">${ring(rateY, `منذ بداية ${y}`, rateYL === null ? "" : delta(rateY || 0, rateYL, "up", ` عن ${+y - 1}`))}${ring(rate, "منذ البداية", `<small class="muted">${money(all.collected)} من ${money(all.invoiced)}</small>`)}</div></div>
-    <div class="card span3"><div class="card-h"><h3>جدول المقارنة</h3><span class="sub">ر.س</span></div>
-      <div class="tbl-wrap flat"><table class="tbl resp cmp-tbl"><thead><tr><th>البند</th><th>${mLabel(m)}</th><th>${mLabel(p)}</th><th>التغير الشهري</th><th>${mLabel(ly, true)}</th><th>منذ بداية ${y}</th><th>نفس الفترة ${+y - 1}</th><th>التغير السنوي</th></tr></thead><tbody>
-      ${rowsCmp.map(([t, k, g]) => `<tr><td class="primary-cell"><div class="t">${t}</div></td><td data-label="${mLabel(m)}" class="num"><b>${money(cur[k])}</b></td><td data-label="${mLabel(p)}" class="num">${money(prv[k])}</td><td data-label="التغير الشهري">${delta(cur[k], prv[k], g)}</td><td data-label="${mLabel(ly, true)}" class="num">${money(lyM[k])}</td><td data-label="منذ بداية ${y}" class="num"><b>${money(yt[k])}</b></td><td data-label="نفس الفترة ${+y - 1}" class="num">${money(ytl[k])}</td><td data-label="التغير السنوي">${delta(yt[k], ytl[k], g)}</td></tr>`).join("")}</tbody></table></div></div>
-    <div class="card"><div class="card-h"><h3>أعمار المستحقات</h3><span class="sub">حسب التأخر عن الاستحقاق</span></div>
-      ${buckets.some((b) => b[1]) ? `<div class="hbars aging">${buckets.map(([n, v], i) => `<div class="hb"><span class="hb-n">${n}</span><div class="hb-t"><i class="a${i}" style="width:${(v / Math.max(...buckets.map((b) => b[1]))) * 100}%" data-tip="${n}: ${money(v)} ر.س"></i></div><b class="num">${money(v)}</b></div>`).join("")}</div>` : emptyBox("check", "لا مستحقات قائمة", "")}</div>
-    <div class="card"><div class="card-h"><h3>أكبر العملاء</h3><span class="sub">المحصّل مقابل المفوتر</span></div>
-      ${clients.length ? bullet(clients.map((r) => ({ name: r.cl.name, value: r.t.collected, target: r.t.invoiced, act: ` data-act="editClient" data-id="${r.cl.id}" style="cursor:pointer"` }))) + legend([{ name: "المحصّل", cls: "s1" }, { name: "المفوتر", cls: "s2" }]) : emptyBox("clients", "لا مطالبات بعد", "")}</div>
-    <div class="card"><div class="card-h"><h3>التحصيل حسب المحامي</h3><span class="sub">منذ بداية ${y}</span></div>
-      ${byLawyer.length ? hbars(byLawyer, { fmt: money }) : emptyBox("team", "لا تحصيل مرتبط بقضايا هذا العام", "")}</div>
-    <div class="card span3"><div class="card-h"><h3>الإيراد حسب نوع القضية</h3><span class="sub">إجمالي المحصّل · ر.س</span></div>
-      ${byType.length ? hbars(byType, { fmt: money, cls: "s2" }) : emptyBox("cases", "لا تحصيل مرتبط بقضايا بعد", "")}</div>
   </div>`;
 }

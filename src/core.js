@@ -35,7 +35,7 @@ const ROLES = { manager: "مدير", partner: "شريك", lawyer: "محامٍ", 
 
 const S = {
   caps: {}, me: { id: null, name: "", avatar: "", isOwner: false, canEdit: false, canWrite: null },
-  data: { lawyers: [], clients: [], cases: [], tasks: [], docs: [], consults: [], finance: [], fees: [], journal: [], finreq: [] }, loaded: {}, portal: "pro",
+  data: { lawyers: [], clients: [], cases: [], tasks: [], docs: [], consults: [], finance: [], fees: [], journal: [], finreq: [] }, loaded: {},
   firm: { ...FIRM_DEFAULTS }, templates: {},
   route: { name: "dashboard", id: null, tab: null },
   caseSub: null, caseLog: [], caseFiles: [], caseReports: [], caseLoadedFor: null,
@@ -201,9 +201,9 @@ function pendingForMe() { const l = myLid(); return l ? S.data.cases.filter((c) 
 function caseRef() { const y = new Date().getFullYear(); const n = S.data.cases.filter((c) => (c.ref || "").includes(`-${y}-`)).length + 1; return `R-${y}-${String(n).padStart(3, "0")}`; }
 
 /* ---------- router & render ---------- */
+const MANAGER_ROUTES = ["finance", "team", "settings", "archive"];
 function go(name, id = null, tab = null) {
-  const p = portalOf(name); if (p === "admin" && S.loaded.lawyers && !isManager()) name = "dashboard";
-  if (p) S.portal = portalOf(name);
+  if (MANAGER_ROUTES.includes(name) && S.loaded.lawyers && !isManager()) name = "dashboard";
   S.route = { name, id, tab }; S.ui.selected.clear(); S.ui.notifOpen = false;
   try { location.hash = name === "dashboard" ? "" : name; } catch {}
   $(".side")?.classList.remove("open");
@@ -235,32 +235,14 @@ function renderSide() {
   const pend = pendingForMe().length;
   const late = openTasks().filter((t) => isMine(t) && daysLeft(t.due) !== null && daysLeft(t.due) < 0).length;
   const n = (k, label, ic, badge) => `<a class="${S.route.name === k || (k === "cases" && S.route.name === "case") || (k === "drafting" && S.route.name === "doc" && !["agreement", "creview", "invoice"].includes(byId(S.data.docs, S.route.id)?.kind)) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") || (k === "consults" && S.route.name === "consult") || (k === "contracts" && (S.route.name === "creview" || (S.route.name === "doc" && ["agreement", "creview"].includes(byId(S.data.docs, S.route.id)?.kind)))) ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span class="nv">${label}${NAV_HINT[k] ? `<small>${NAV_HINT[k]}</small>` : ""}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
-  const me = myLawyer(); const admin = S.portal === "admin" && isManager();
-  const npend = (S.data.finreq || []).filter((r) => (r.status || "pending") === "pending").length + S.data.fees.filter((f) => f.status === "pending").length;
-  const n2 = (k, label, ic, badge, also = []) => `<a class="${S.route.name === k || also.includes(S.route.name) || (k === "finance" && S.route.name === "doc" && byId(S.data.docs, S.route.id)?.kind === "invoice") ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span class="nv">${label}${NAV_HINT[k] ? `<small>${NAV_HINT[k]}</small>` : ""}</span>${badge ? `<span class="badge num">${badge}</span>` : ""}</a>`;
-  const switcher = isManager() ? `<div class="portal-switch"><a class="${admin ? "" : "on"}" data-act="portalSwitch" data-p="pro">${icon("gavel")}المهني</a><a class="${admin ? "on" : ""}" data-act="portalSwitch" data-p="admin">${icon("building")}الإداري${npend ? `<i class="num">${npend}</i>` : ""}</a></div>` : "";
+  const me = myLawyer();
   const brand = `<div class="brand"><img class="mark" src="${LOGO.iconDark}" alt="ركز"><img class="word" src="${LOGO.textDark}" alt="ركز النظامية للمحاماة والاستشارات القانونية"></div>`;
   const meBox = `<div class="me">${S.me.avatar ? `<img src="${esc(S.me.avatar)}" alt="">` : `<span class="avatar">${esc(initials(me?.name || S.me.name))}</span>`}
       ${window.RAKZ_PASSWORD ? `<button class="icon-btn" data-act="changePw" title="تغيير كلمة المرور" aria-label="تغيير كلمة المرور" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("settings")}</button>` : ""}
       ${window.RAKZ_SIGNOUT ? `<button class="icon-btn" data-act="signOut" title="تسجيل الخروج" aria-label="تسجيل الخروج" style="background:transparent;border-color:transparent;color:var(--nav-ink)">${icon("x")}</button>` : ""}
       <div class="grow" style="min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(me?.name || S.me.name || S.me.email || "")}</div><small>${me ? esc(ROLES[me.role] || "") : "غير مضاف إلى فريق العمل"}</small></div></div>`;
-  if (admin) {
-    $(".side").innerHTML = `${brand}${switcher}<nav class="nav">
-      ${n2("admin", "لوحة الإدارة", "dash")}
-      <div class="nav-sec">الاعتماد والمتابعة</div>
-      ${n2("finreqs", "الطلبات المالية", "check", npend || "")}
-      ${n2("finfiles", "الملفات المالية للقضايا", "cases", "", ["finfile"])}
-      ${n2("finance", "المطالبات والفواتير", "receipt")}
-      <div class="nav-sec">الإدارة</div>
-      ${n2("clients", "العملاء", "clients")}
-      ${n2("team", "فريق العمل", "team")}
-      ${n2("settings", "الإعدادات والهوية", "settings")}
-      ${n2("archive", "الأرشيف وتجديد المنصة", "box")}
-    </nav>${meBox}`;
-    return;
-  }
   $(".side").innerHTML = `
-    ${brand}${switcher}
+    ${brand}
     <nav class="nav">
       ${n("dashboard", "لوحة التحكم", "dash")}
       <div class="nav-sec">العمل اليومي</div>
@@ -275,6 +257,7 @@ function renderSide() {
       <div class="nav-sec">العملاء والربط</div>
       ${n("clients", "العملاء", "clients")}
       ${n("najiz", "ناجز", "link")}
+      ${isManager() ? `<div class="nav-sec">الإدارة</div>${n("finance", "المالية", "receipt")}${n("team", "فريق العمل", "team")}${n("settings", "الإعدادات والهوية", "settings")}${n("archive", "الأرشيف وتجديد المنصة", "box")}` : ""}
     </nav>${meBox}`;
 }
 
@@ -284,15 +267,12 @@ const NAV_HINT = {
   consults: "طلبات الرأي القانوني للعملاء", assign: "قضايا أُسندت إليك لتقبلها", drafting: "لوائح ومذكرات وعروض أتعاب",
   contracts: "صياغة العقود ومراجعتها", laws: "الأنظمة واللوائح الرسمية", chat: "سؤال قانوني بإجابة موثقة",
   clients: "بيانات العملاء وقضاياهم", najiz: "استيراد مستجدات القضايا من ناجز",
-  admin: "المؤشرات المالية والمقارنات", finreqs: "اعتماد أو رفض طلبات المحامين", finfiles: "مالية كل قضية حتى إقفالها",
-  finance: "المطالبات والفواتير الضريبية والقيود", team: "الأعضاء وصلاحياتهم", settings: "بيانات المكتب والخط والورق", archive: "حفظ نسخة كاملة وبدء فترة جديدة",
+  finance: "الأتعاب والمطالبات والدفعات", team: "الأعضاء وصلاحياتهم", settings: "بيانات المكتب والخط والورق", archive: "حفظ نسخة كاملة وبدء فترة جديدة",
 };
 function renderBnav() {
   const b = $(".bnav"); if (!b) return;
   const r = S.route.name; const late = openTasks().filter((t) => isMine(t) && daysLeft(t.due) !== null && daysLeft(t.due) < 0).length;
   const it = (k, label, ic, on, badge) => `<a class="${on ? "on" : ""}" data-act="go" data-r="${k}">${icon(ic)}<span>${label}</span>${badge ? `<i class="num">${badge}</i>` : ""}</a>`;
-  if (S.portal === "admin" && isManager()) { const np = (S.data.finreq || []).filter((x) => (x.status || "pending") === "pending").length + S.data.fees.filter((f) => f.status === "pending").length;
-    b.innerHTML = it("admin", "الإدارة", "dash", r === "admin") + it("finreqs", "الطلبات", "check", r === "finreqs", np) + it("finfiles", "الملفات", "cases", r === "finfiles" || r === "finfile") + it("finance", "الفواتير", "receipt", r === "finance") + `<a data-act="menu">${icon("menu")}<span>المزيد</span></a>`; return; }
   b.innerHTML = it("dashboard", "الرئيسية", "dash", r === "dashboard") + it("cases", "القضايا", "cases", r === "cases" || r === "case") + it("tasks", "المهام", "tasks", r === "tasks", late) + it("consults", "الاستشارات", "chat", r === "consults" || r === "consult")
     + `<a data-act="menu">${icon("menu")}<span>المزيد</span></a>`;
 }
@@ -302,7 +282,6 @@ function notifications() {
   pendingForMe().forEach((c) => out.push({ t: `طلب إسناد قضية: ${c.title}`, s: `من ${lawyerName(c.assignment.from)}`, act: "go", r: "assign", tone: "gold" }));
   S.data.cases.filter((c) => c.assignment && c.assignment.from === l && c.assignment.status !== "pending" && c.assignment.respondedAt && Date.now() - new Date(c.assignment.respondedAt) < 7 * 864e5)
     .forEach((c) => out.push({ t: `${lawyerName(c.assignment.to)} ${c.assignment.status === "accepted" ? "قبل" : "اعتذر عن"} إسناد: ${c.title}`, s: ago(c.assignment.respondedAt), act: "openCase", id: c.id, tone: c.assignment.status === "accepted" ? "ok" : "bad" }));
-  if (isManager()) { const np = (S.data.finreq || []).filter((r) => (r.status || "pending") === "pending"); if (np.length) out.push({ t: `${np.length} طلب مالي بانتظار اعتمادك`, s: "النظام الإداري", act: "go", r: "finreqs", tone: "gold" }); }
   openTasks().filter((t) => isMine(t) && t.due && daysLeft(t.due) <= 2).sort((a, b) => a.due.localeCompare(b.due))
     .forEach((t) => out.push({ t: `${TASK_KINDS[t.kind]?.t || "مهمة"}: ${t.title}`, s: `${fmtDate(t.due)} · ${daysLeft(t.due) < 0 ? "متأخر" : daysLeft(t.due) === 0 ? "اليوم" : "قريبًا"}`, act: "go", r: "tasks", tone: daysLeft(t.due) < 0 ? "bad" : "warn" }));
   return out;

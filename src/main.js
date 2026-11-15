@@ -13,8 +13,7 @@ render = function () {
 async function boot() {
   setTheme(lsGet("theme", "light"));
   const h = (location.hash || "").replace("#", "");
-  if (VIEWS[h] && !["case", "doc", "creview", "consult", "finfile"].includes(h)) S.route.name = h;
-  else S.route.name = "portal"; // after sign-in: managers choose the professional or administrative system
+  if (VIEWS[h] && !["case", "doc", "creview", "consult"].includes(h)) S.route.name = h;
   render();
   const use = (n) => (window.claude?.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null));
   const [db, user, sample, assets, downloads] = await Promise.all(["db", "user", "sample", "assets", "downloads"].map(use));

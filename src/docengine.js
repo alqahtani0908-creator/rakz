@@ -7,6 +7,19 @@
    ---          rule                                      **نص**       bold inline
    «المفتاح: القيمة» lines bold the key; [........] is highlighted as a blank to fill.
    Lines such as «أولًا: …» or «البند الثالث: …» are promoted to section headings automatically. */
+/* QR code images (PNG data URLs) for «@qr <data>» blocks, drawn on a canvas with qrcode-generator. */
+const QRLIB = "https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js";
+const QR_CACHE = {};
+function qrPng(data, size = 6) {
+  if (QR_CACHE[data]) return QR_CACHE[data];
+  if (!window.qrcode) { loadScript(QRLIB).then(() => { if (typeof livePreview === "function") livePreview(); }).catch(() => {}); return ""; }
+  const qr = window.qrcode(0, "M"); qr.addData(data); qr.make();
+  const n = qr.getModuleCount(), q = 4, cv = document.createElement("canvas"); cv.width = cv.height = (n + q * 2) * size;
+  const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.fillStyle = "#000";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) g.fillRect((c + q) * size, (r + q) * size, size, size);
+  return (QR_CACHE[data] = cv.toDataURL("image/png"));
+}
+const ensureQr = () => (window.qrcode ? Promise.resolve() : loadScript(QRLIB));
 const JSZIP = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
 const ORD = "أولًا|أولاً|ثانيًا|ثانياً|ثالثًا|ثالثاً|رابعًا|رابعاً|خامسًا|خامساً|سادسًا|سادساً|سابعًا|سابعاً|ثامنًا|ثامناً|تاسعًا|تاسعاً|عاشرًا|عاشراً|الحادي عشر|الثاني عشر|الثالث عشر|الرابع عشر|الخامس عشر";
 const RE_AUTO_H = new RegExp(`^((${ORD})\\s*[:：\\-–]|البند\\s+[^\\s:]+(\\s+[^\\s:]+)?\\s*[:：]|المادة\\s+[^\\s:]+\\s*[:：])`);
