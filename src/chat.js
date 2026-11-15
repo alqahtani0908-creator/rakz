@@ -56,7 +56,7 @@ A.chatRef = (el) => {
   modal(`${esc(r.law)} — ${esc(r.article)}`, `<div class="prose">${esc(r.body || "")}</div>${r.parent ? `<p class="small muted" style="margin:0">تابع لـ ${esc(r.parent)}</p>` : ""}`,
     `<button class="btn" data-act="chatOpenLaw" data-id="${esc(r.slug)}">${icon("book")}فتح في المكتبة</button><button class="btn ghost" data-act="closeModal">إغلاق</button>`);
 };
-A.chatOpenLaw = (el) => { closeModal(); const l = (S.lawList || []).find((x) => x.slug === el.dataset.id); S.lawFam = l?.parent || el.dataset.id; S.lawTab = l?.parent ? "regs" : "text"; S.lawText = null; go("laws"); };
+A.chatOpenLaw = (el) => { closeModal(); const l = (S.lawList || []).find((x) => x.slug === el.dataset.id); S.lawFam = l?.parent || el.dataset.id; S.lawTab = l?.parent ? "regs" : "text"; S.lawView = l?.parent ? { slug: l.slug } : null; S.lawText = null; go("laws"); };
 
 /* Stage 1 — understand the question: restate it precisely, pick the laws it falls under, and write search phrases
    in the statutes' own vocabulary. Asks back only when the answer would differ materially and cannot cover both. */

@@ -26,30 +26,55 @@ def text(fragment):
     t = re.sub(r'<[^>]+>', '', t); t = html.unescape(t).replace('\xa0', ' ')
     t = re.sub(r'[ \t]+', ' ', t); t = re.sub(r'\s*\n\s*', '\n', t).strip()
     return t
+def heading(t):
+    """«الباب الأول ( أحكام عامة )» → «الباب الأول: أحكام عامة»."""
+    t = re.sub(r'\s+', ' ', t).strip().rstrip(':： ')
+    m = re.match(r'^(.*?)\s*\(\s*(.*?)\s*\)\s*$', t)
+    return f"{m.group(1).strip()}: {m.group(2).strip()}" if m and m.group(1) else t
+def level(t):
+    if t.startswith('الباب'): return 0
+    if t.startswith('الفصل'): return 1
+    return 2 if re.match(r'^(الفرع|القسم|المبحث)', t) else 1
+def push(path, t):
+    """Keep the chain of headings (باب ← فصل ← فرع) that an article sits under."""
+    lv = level(t); del path[lv:]
+    while len(path) < lv: path.append('')
+    path.append(t)
 def parse(path):
     s = open(path, encoding='utf-8').read()
     meta = {}
     m = re.search(r'تاريخ الإصدار\s*</[^>]+>\s*<[^>]+>\s*([^<]+)', s)
     if m: meta['issued'] = html.unescape(m.group(1)).strip()
-    blocks = re.split(r'<div class="article_item ', s)[1:]
-    arts = []
+    parts = re.split(r'<div class="article_item ', s)
+    blocks = parts[1:]
+    arts = []; trail = []
+    # Section headings (باب / فصل / فرع) are <h3 class="center"> outside the article blocks: before the first
+    # article, or after an article's content and before the next one.
+    def sections(fragment):
+        for h in re.findall(r'<h3 class="center">(.*?)</h3>', fragment, re.S):
+            t = text(h)
+            if t and not t.startswith('المادة') and not re.match(r'^(نظام|اللائحة)', t): push(trail, heading(t))
+    sections(parts[0].split('system_title', 1)[-1])
     for b in blocks:
         cls = b.split('"', 1)[0]
         # Main headings carry class="center"; amendment popups use a bare <h3>.
-        heads = [text(h) for h in re.findall(r'<h3 class="center">(.*?)</h3>', b, re.S)]
-        heads = [h.rstrip(':： ').strip() for h in heads if h.strip().startswith('المادة')]
-        if not heads: continue
+        hs = [(m.start(), text(m.group(1))) for m in re.finditer(r'<h3 class="center">(.*?)</h3>', b, re.S)]
+        heads = [h.rstrip(':： ').strip() for _, h in hs if h.strip().startswith('المادة')]
+        if not heads: sections(b); continue
         main, notes = [], []
         for c in re.finditer(r'<div class="HTMLContainer">(.*?)</div>', b, re.S):
             # Inside an amendment popup when no </div> closes the popup item before this container.
             before = b[:c.start()]; k = before.rfind('<div class="article_item_popup">')
             in_popup = k >= 0 and '</div>' not in before[k:]
             (notes if in_popup else main).append(text(c.group(1)))
-        if not main: continue
+        if not main: sections(b); continue
         body = main[-1]
         if 'canceled-article' in cls: body = 'مادة ملغاة. ' + body
         if notes: body += '\n[تعديلات المادة المسجلة]: ' + ' | '.join(n for n in notes if n)
-        arts.append({"article": heads[-1], "num": len(arts) + 1, "body": body})
+        arts.append({"article": heads[-1], "num": len(arts) + 1, "body": body, "path": [x for x in trail if x]})
+        # headings after this article's own heading belong to the next articles
+        last = max(i for i, h in hs if h.strip().startswith('المادة'))
+        sections(b[last:].split('</h3>', 1)[-1])
     return meta, arts
 def fetch(gid):
     import urllib.request

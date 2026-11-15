@@ -192,17 +192,20 @@
   /* ---------- law library (tables law_sources / law_articles, RPC search_laws) ---------- */
   if (sb) window.RAKZ_LAWS = {
     async list() { const { data, error } = await sb.from("law_sources").select("*").order("ord", { nullsFirst: false }).order("name"); if (error) throw error; return data || []; },
-    async articles(slug) { const { data, error } = await sb.from("law_articles").select("article,num,body").eq("law_slug", slug).order("num").limit(3000); if (error) throw error; return data || []; },
+    async articles(slug) { const { data, error } = await sb.from("law_articles").select("article,num,body,path,title").eq("law_slug", slug).order("num").limit(3000); if (error) throw error; return data || []; },
     async search(q, k = 8, law = null) { const { data, error } = await sb.rpc("search_laws", { p_q: q, p_k: k, p_law: law }); if (error) throw error; return data || []; },
     async save(src, articles) {
       const { error: e1 } = await sb.from("law_sources").upsert({ ...src, articles: articles.length, added_at: new Date().toISOString() }); if (e1) throw e1;
       const { error: e2 } = await sb.from("law_articles").delete().eq("law_slug", src.slug); if (e2) throw e2;
       for (let i = 0; i < articles.length; i += 200) {
-        const { error } = await sb.from("law_articles").insert(articles.slice(i, i + 200).map((a) => ({ law_slug: src.slug, law: src.name, article: a.article, num: a.num, body: a.body })));
+        const { error } = await sb.from("law_articles").insert(articles.slice(i, i + 200).map((a) => ({ law_slug: src.slug, law: src.name, article: a.article, num: a.num, body: a.body, path: a.path?.length ? a.path : null, title: a.title || null })));
         if (error) throw error;
       }
     },
     async remove(slug) { const { error } = await sb.from("law_sources").delete().eq("slug", slug); if (error) throw error; },
+    /* titles and practical examples written by the assistant (table law_scenes) */
+    async scenes(slug) { const { data, error } = await sb.from("law_scenes").select("num,body_hash,title,example").eq("law_slug", slug).limit(3000); if (error) throw error; return data || []; },
+    async saveScenes(slug, rows) { if (!rows.length) return; const { error } = await sb.from("law_scenes").upsert(rows.map((r) => ({ law_slug: slug, num: r.num, body_hash: r.body_hash, title: r.title || null, example: r.example || null, created_at: new Date().toISOString() }))); if (error) throw error; },
   };
 
   /* ---------- downloads ---------- */

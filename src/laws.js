@@ -91,12 +91,11 @@ function lawCard(l, kids, ic) {
 function lawResultsCard(res) {
   return `<div class="card"><div class="card-h"><h3>نتائج «${esc(S.lawQ)}»</h3><span class="sub num">${res.length}</span></div>${res.length ? `<div class="list">${res.map((r) => `<div class="li" style="align-items:flex-start"><div class="body"><div class="ttl">${esc(lawLabel(r))} — ${esc(r.article)}</div><div class="prose small" style="margin-top:4px">${esc(r.body)}</div></div></div>`).join("")}</div>` : emptyBox("search", "لا توجد مواد مطابقة", "جرّب كلمات أخرى أو أضف النظام المعني إلى المكتبة.")}</div>`;
 }
-A.lawFamOpen = (el) => { S.lawFam = el.dataset.id; S.lawTab = "text"; S.lawView = null; S.lawText = null; render(); window.scrollTo(0, 0); };
+A.lawFamOpen = (el) => { S.lawFam = el.dataset.id; S.lawTab = "text"; S.lawView = null; S.lawFilter = ""; S.lawText = null; render(); window.scrollTo(0, 0); };
 A.lawBack = () => { S.lawFam = null; S.lawView = null; S.lawText = null; render(); };
 A.lawTab = (el) => { S.lawTab = el.dataset.tab; S.lawView = null; render(); };
 function lawDetail(l, list) {
   const kids = list.filter((x) => x.parent === l.slug); const g = groupOf(l); const tab = LAW_TABS.find((t) => t.k === S.lawTab) || LAW_TABS[0];
-  if (tab.k === "text" && (!S.lawText || S.lawText.slug !== l.slug)) { S.lawText = { slug: l.slug, rows: null }; LAWS().articles(l.slug).then((r) => { if (S.lawText?.slug === l.slug) { S.lawText.rows = r; render(); } }).catch(() => toast("تعذّر تحميل المواد", true)); }
   const n = (t) => (t.kinds ? kids.filter((k) => t.kinds.includes(k.kind || "لائحة")).length : l.articles || 0);
   const items = tab.kinds ? kids.filter((k) => tab.kinds.includes(k.kind || "لائحة")) : [];
   const q = (S.lawFilter || "").trim();
@@ -105,8 +104,7 @@ function lawDetail(l, list) {
       <div class="row small muted" style="margin-top:4px">${l.issued ? `<span>صدر ${esc(l.issued)}</span>` : ""}${l.status ? pill(l.status, "warn") : pill("ساري", "ok")}${l.source_url ? `<a href="${esc(l.source_url)}" target="_blank" rel="noopener">${icon("link")} المصدر الرسمي</a>` : ""}${l.updated ? `<span>${esc(l.updated)}</span>` : ""}</div></div>
     <div class="row"><button class="btn gold" data-act="chatAbout" data-id="${esc(l.slug)}">${icon("bot")}اسأل عن هذا النظام</button></div></div>
     <div class="tabs">${LAW_TABS.map((t) => `<a class="${tab.k === t.k ? "on" : ""}" data-act="lawTab" data-tab="${t.k}">${t.t}<span class="n num">${n(t).toLocaleString("en")}</span></a>`).join("")}</div></div>
-  ${tab.k === "text" ? `<div class="card"><div class="card-h"><h3>مواد ${esc(l.name)}</h3><input class="inp" style="max-width:260px" placeholder="تصفية المواد…" value="${esc(q)}" data-draft="lawFilterQ" data-live="lawFilter"></div>
-      ${S.lawText?.rows ? `<div class="list">${S.lawText.rows.filter((a) => !q || (a.article + " " + a.body).includes(q)).map((a) => `<div class="li" style="align-items:flex-start"><div class="body"><div class="ttl">${esc(a.article)}</div><div class="prose small">${esc(a.body)}</div></div></div>`).join("")}</div>` : `<div class="thinking">جارٍ التحميل…</div>`}</div>`
+  ${tab.k === "text" ? lawBook(l)
   : `<div class="card"><div class="card-h"><h3>${tab.t}</h3><button class="btn sm ${items.length ? "" : "gold"}" data-act="addLaw" data-parent="${esc(l.slug)}" data-kind="${esc(tab.kinds[0])}">${icon("plus")}إضافة ${tab.official ? "من مصدر رسمي" : ""}</button></div>
       ${tab.official ? `<p class="small muted" style="margin:0 0 10px">لا يُقبل إلا ما له رابط من جهة حكومية سعودية (نطاق ‎.gov.sa)، مثل وزارة العدل أو ديوان المظالم أو هيئة الخبراء أو المحكمة العليا، ويُذكر تاريخه ليُعرف سريانه.</p>` : ""}
       ${items.length ? `<div class="list">${items.map((c) => `<div class="li clickable" data-act="lawOpen" data-id="${esc(c.slug)}"><span class="ic" style="color:var(--accent-ink)">${icon(tab.ic)}</span><div class="body"><div class="ttl">${esc(c.name)}</div><div class="meta"><span>${esc(c.kind || "")}</span><span class="num">${c.articles} ${esc(ITEM_WORD[c.kind] || "مادة")}</span>${c.issued ? `<span>${esc(c.issued)}</span>` : ""}${c.source_url ? `<a href="${esc(c.source_url)}" target="_blank" rel="noopener" data-noact="1">المصدر</a>` : ""}</div></div>${c.status ? pill(c.status, "warn") : ""}
@@ -116,9 +114,8 @@ function lawDetail(l, list) {
 }
 CH.lawFilter = debounce((el) => { S.lawFilter = el.value; const pos = el.selectionStart; render(); const i = document.querySelector('[data-live="lawFilter"]'); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch {} } }, 250);
 function lawArticlesCard() {
-  const v = S.lawView;
-  return `<div class="card"><div class="card-h"><h3>${esc(v.name)}</h3><button class="btn sm ghost" data-act="lawClose">${icon("x")}إغلاق</button></div>
-    ${v.rows ? `<div class="list">${v.rows.map((a) => `<div class="li" style="align-items:flex-start"><div class="body"><div class="ttl">${esc(a.article)}</div><div class="prose small">${esc(a.body)}</div></div></div>`).join("")}</div>` : `<div class="thinking">جارٍ التحميل…</div>`}</div>`;
+  const l = (S.lawList || []).find((x) => x.slug === S.lawView.slug); if (!l) return "";
+  return `<div class="row" style="justify-content:space-between"><b>${esc(l.name)}</b><button class="btn sm ghost" data-act="lawClose">${icon("x")}إغلاق</button></div>${lawBook(l)}`;
 }
 /* The official library built by tools/law_library.py (laws.boe.gov.sa + laws.moj.gov.sa), published as docs/laws/core.json.
    Entries come in family order: each main law followed by its regulations (`parent` = the main law's slug). */
@@ -136,11 +133,11 @@ A.importCore = async () => {
     }
     toast(`استُورد ${entries.length} نظامًا ولائحة (${arts} مادة) من المصادر الرسمية`);
   } catch (e) { console.error(e); toast("تعذّر الاستيراد: " + (e.message || ""), true); }
-  finally { S.lawImport = null; S.lawList = null; render(); }
+  finally { S.lawImport = null; S.lawList = null; for (const k of Object.keys(LB)) delete LB[k]; render(); }
 };
 F.lawSearch = async (d) => { S.lawQ = d.q.trim(); if (!S.lawQ) return; S.lawResults = null; try { S.lawResults = await LAWS().search(S.lawQ, 20); } catch { toast("تعذّر البحث", true); } render(); };
 A.lawClear = () => { S.lawQ = ""; S.lawResults = null; render(); };
-A.lawOpen = async (el) => { const l = (S.lawList || []).find((x) => x.slug === el.dataset.id); if (!l) return; S.lawView = { name: l.name, rows: null }; render(); try { S.lawView.rows = await LAWS().articles(l.slug); } catch { toast("تعذّر تحميل المواد", true); } render(); };
+A.lawOpen = (el) => { const l = (S.lawList || []).find((x) => x.slug === el.dataset.id); if (!l) return; S.lawView = { slug: l.slug }; S.lawFilter = ""; render(); setTimeout(() => document.querySelector(".lb-cover:last-of-type")?.scrollIntoView({ behavior: "smooth" }), 80); };
 A.lawClose = () => { S.lawView = null; render(); };
 A.lawRemove = (el) => confirmBox("حذف النظام من المكتبة", "ستُحذف مواده من المكتبة، ولن يستند إليها المساعد بعد الآن.", "حذف", async () => { await LAWS().remove(el.dataset.id); S.lawList = null; S.lawView = null; toast("حُذف"); render(); }, true);
 

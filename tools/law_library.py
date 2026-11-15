@@ -108,21 +108,30 @@ def kind_of(name, legal_type):
     return {"لائحة": "لائحة", "قواعد": "قواعد", "آلية": "آلية", "أدلة": "أدلة إجرائية", "ضوابط": "ضوابط", "تنظيم": "تنظيم", "ترتيبات": "ترتيبات", "دليل": "دليل"}.get(legal_type or "", legal_type or "لائحة")
 
 def moj_articles(m):
-    arts = []
-    def walk(nodes):
+    arts = []; trail = []
+    def walk(nodes, depth):
         for x in nodes or []:
             if x.get("type") == 1:
                 seq = re.sub(r"[:：\s]+$", "", (x.get("sequence") or "").strip())
                 label = seq if re.match(r"^(المادة|القاعدة|البند|الفقرة|أولاً|ثانياً)", seq) else ("المادة " + seq if seq else f"البند {len(arts) + 1}")
                 body = clean(x.get("text") or "")
-                if x.get("name"): body = x["name"].strip() + ": " + body
                 if x.get("isCancelled"): body = "مادة ملغاة. " + body
                 st = x.get("legalStatusName")
                 if st in ("معدلة", "مضافة") and x.get("decree"):
                     body += f"\n[{st} بموجب {x['decree']} وتاريخ {(x.get('decreeDate') or '')[:10]}هـ]"
-                if body.strip(): arts.append({"article": label, "num": len(arts) + 1, "body": body})
-            walk(x.get("items"))
-    walk(m.get("statuteStructure"))
+                if body.strip():
+                    a = {"article": label, "num": len(arts) + 1, "body": body, "path": [t for t in trail[:depth] if t]}
+                    if (x.get("name") or "").strip(): a["title"] = x["name"].strip()
+                    arts.append(a)
+                walk(x.get("items"), depth)
+            else:
+                # a section node (باب / فصل / فرع): its label is the sequence plus its name
+                seq = re.sub(r"[:：\s]+$", "", (x.get("sequence") or "").strip()); nm = (x.get("name") or "").strip()
+                del trail[depth:]
+                trail.append(f"{seq}: {nm}" if seq and nm else seq or nm)
+                walk(x.get("items"), depth + 1)
+                del trail[depth:]
+    walk(m.get("statuteStructure"), 0)
     return arts
 
 def build(entry, parent, cache, tmp):

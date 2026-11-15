@@ -318,3 +318,12 @@ begin
   end if;
   return new;
 end $$;
+
+-- ============ Law book: structure and practical examples ============
+alter table public.law_articles add column if not exists path text[];   -- باب ← فصل ← فرع, from the official source
+alter table public.law_articles add column if not exists title text;    -- the article's own title when the source gives one
+create table if not exists public.law_scenes (
+  law_slug text not null, num integer not null, body_hash text not null, title text, example text,
+  created_at timestamptz not null default now(), created_by uuid default auth.uid(), primary key (law_slug, num));
+alter table public.law_scenes enable row level security;
+create policy "members manage law scenes" on public.law_scenes for all to authenticated using (public.is_member()) with check (public.is_member());

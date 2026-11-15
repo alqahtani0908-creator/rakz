@@ -93,6 +93,7 @@ const lsSet = (k, v) => { try { localStorage.setItem("rakz:" + k, JSON.stringify
 
 /* ---------- icons ---------- */
 const IC = {
+  bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',
   box: '<path d="M3 7h18v4H3z"/><path d="M5 11v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8"/><path d="M10 15h4"/>',
   play: '<path d="M8 5.5v13l10-6.5z"/>',
   share: '<path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M6 11v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8"/>',
